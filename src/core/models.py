@@ -9,8 +9,8 @@ from typing import Any
 
 def to_decimal(value: Any) -> Decimal:
     """
-    int, float, str, Decimal 값을
-    Engineering 계산용 Decimal로 변환한다.
+    숫자를 Engineering 계산에 사용할
+    Decimal 형식으로 변환한다.
     """
 
     if isinstance(value, Decimal):
@@ -20,13 +20,13 @@ def to_decimal(value: Any) -> Decimal:
 
 
 # =========================================================
-# VARIABLE MODEL
+# VARIABLE
 # =========================================================
 
 @dataclass(frozen=True)
 class VariableSpec:
     """
-    하나의 Engineering Variable 정의.
+    하나의 Engineering 변수 정의.
     """
 
     unit: str
@@ -90,20 +90,22 @@ class VariableSpec:
 
 
 # =========================================================
-# GENERIC ENGINEERING CONSTRAINT
+# ENGINEERING CONSTRAINT
 # =========================================================
 
 @dataclass(frozen=True)
-class ConstraintSpec:
+class RequirementSpec:
     """
-    Requirement와 Verification Constraint가
-    공통으로 사용하는 Constraint 구조.
+    하나의 Engineering 조건.
 
-    현재 지원:
+    현재 지원하는 조건:
 
     1. range
     2. difference_min
     3. sum_upper
+
+    같은 구조를 설계 요구조건과
+    검사계획 관계조건 모두에 사용할 수 있다.
     """
 
     id: str
@@ -132,7 +134,7 @@ class ConstraintSpec:
     def from_dict(
         cls,
         data: dict[str, Any],
-    ) -> "ConstraintSpec":
+    ) -> "RequirementSpec":
 
         minimum = data.get("min")
         maximum = data.get("max")
@@ -234,10 +236,6 @@ class ConstraintSpec:
                 self.description
             )
 
-        # -------------------------------------------------
-        # RANGE
-        # -------------------------------------------------
-
         if self.type == "range":
 
             data["variable"] = (
@@ -251,10 +249,6 @@ class ConstraintSpec:
             data["max"] = (
                 self.max_value
             )
-
-        # -------------------------------------------------
-        # DIFFERENCE MIN
-        # -------------------------------------------------
 
         elif self.type == "difference_min":
 
@@ -270,10 +264,6 @@ class ConstraintSpec:
                 self.min_value
             )
 
-        # -------------------------------------------------
-        # SUM UPPER
-        # -------------------------------------------------
-
         elif self.type == "sum_upper":
 
             data["variables"] = list(
@@ -287,11 +277,8 @@ class ConstraintSpec:
         return data
 
 
-# 기존 Core 코드와 호환하기 위한 이름
-RequirementSpec = ConstraintSpec
-
-# Verification Plan에서도 같은 구조 사용
-VerificationConstraintSpec = ConstraintSpec
+# 같은 형태의 조건을 여러 곳에서 사용한다는 의미
+ConstraintSpec = RequirementSpec
 
 
 # =========================================================
@@ -301,14 +288,14 @@ VerificationConstraintSpec = ConstraintSpec
 @dataclass
 class EngineeringCase:
     """
-    전체 Engineering Verification Case.
+    하나의 전체 Engineering 검증 Case.
 
     requirements:
-        실제 설계 / 기술 요구사항
+        실제 설계 / 기술 요구조건
 
     verification_constraints:
-        기본 Variable Verification Range 외에
-        Verification Plan에 추가되는 관계조건
+        기본 검사 Range 외에
+        검사계획에 들어가는 관계조건
     """
 
     name: str
@@ -319,11 +306,11 @@ class EngineeringCase:
     ]
 
     requirements: list[
-        ConstraintSpec
+        RequirementSpec
     ]
 
     verification_constraints: list[
-        ConstraintSpec
+        RequirementSpec
     ] = field(
         default_factory=list
     )
@@ -348,7 +335,7 @@ class EngineeringCase:
             )
 
         requirements = [
-            ConstraintSpec.from_dict(
+            RequirementSpec.from_dict(
                 requirement_data
             )
             for requirement_data
@@ -356,7 +343,7 @@ class EngineeringCase:
         ]
 
         verification_constraints = [
-            ConstraintSpec.from_dict(
+            RequirementSpec.from_dict(
                 constraint_data
             )
             for constraint_data
@@ -414,7 +401,7 @@ class EngineeringCase:
     def get_requirement(
         self,
         requirement_id: str,
-    ) -> ConstraintSpec:
+    ) -> RequirementSpec:
 
         for requirement in self.requirements:
 
