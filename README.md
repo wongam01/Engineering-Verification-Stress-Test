@@ -1,38 +1,71 @@
-cat > README.md <<'EOF'
 # Engineering Verification Stress Test
 
-설계·기술 요구사항(Requirement)과 실제 검사·시험·검증계획(Verification Plan)을 비교하여,  
-현재 검증계획을 통과하면서도 실제 요구사항을 위반할 수 있는 상태를 탐색하는  
-**Engineering Verification Stress Test** 프로젝트입니다.
+> **제품을 검사하는 시스템이 아니라, 제품을 검사하는 ‘검증계획 자체가 충분한지’를 실제 적용 전에 가상으로 공격해보는 시스템**
 
-현재는 핵심 검증 엔진의 프로토타입을 개발하고 있으며,  
-향후 AI를 이용한 엔지니어링 문서의 Constraint 추출 기능을 연결하는 것을 목표로 합니다.
+설계·기술 요구조건과 실제 검사·시험 기준을 비교하여,  
+**검사에서는 합격하지만 실제 설계 요구조건은 위반하는 상태**가 존재하는지를 탐색합니다.
 
+현재는 결정론적 Solver인 **Z3**를 기반으로 핵심 검증 엔진을 개발하고 있으며,  
+향후 AI를 이용한 도면·Specification·Inspection Plan의 조건 추출 기능을 연결하는 것을 목표로 합니다.
 
-## 먼저 보는 핵심 용어
+---
 
-README를 읽기 전에 아래 용어만 이해하면 전체 프로젝트의 흐름을 쉽게 볼 수 있습니다.
+## 핵심 용어
+
+아래 용어만 이해하면 프로젝트의 전체 흐름을 쉽게 볼 수 있습니다.
 
 | 용어 | 쉬운 의미 | 이 프로젝트에서의 의미 |
 |---|---|---|
 | **Requirement** | 설계·기술 요구조건 | 제품이나 시스템이 실제로 만족해야 하는 설계 기준 |
-| **Verification Plan** | 검사·시험·검증 계획 | 실제 현장에서 제품이 요구조건을 만족하는지 확인하기 위해 사용하는 검사 및 시험 기준 |
+| **Verification Plan** | 검사·시험·검증 계획 | 실제 현장에서 합격/불합격을 판단하기 위해 사용하는 검사 및 시험 기준 |
 | **Feasible Domain** | 현실적으로 가능한 범위 | 물리적·공정적·운영상 실제로 발생할 수 있는 상태 범위 |
-| **Verification Escape** | 검사망을 빠져나가는 요구조건 위반 상태 | 현실적으로 가능하고, 현재 검사에는 PASS하지만 실제 설계 요구조건은 FAIL하는 상태 |
-| **Stress Test** | 검사 기준 허점 공격 | 현재 검사계획을 가상으로 공격하여 빠져나갈 수 있는 상태를 능동적으로 탐색하는 과정 |
-| **Worst Undetected Violation** | 최대 미검출 위반 | 검사를 PASS하면서 설계 요구조건을 가장 크게 위반할 수 있는 경우 |
-| **Nearest Escape** | 정상 상태에 가장 가까운 허점 | 정상 설계값에서 가장 작은 변화만으로 검사망을 빠져나갈 수 있는 경우 |
-| **Patch** | 검사 기준 수정안 | 발견된 검사 허점을 줄이거나 제거하기 위한 검사·시험 기준 수정 후보 |
-| **Re-test** | 수정 후 재검증 | 수정한 검사 기준을 다시 공격하여 허점이 실제로 사라졌는지 확인하는 과정 |
+| **Verification Escape** | 검사망을 빠져나가는 요구조건 위반 상태 | 현실적으로 가능하고 검사에는 합격하지만 실제 요구조건은 위반하는 상태 |
+| **Stress Test** | 검증계획 허점 공격 | 현재 검사계획을 가상으로 공격하여 빠져나갈 수 있는 상태를 능동적으로 찾는 과정 |
+| **Worst Undetected Violation** | 최대 미검출 위반 | 검사에 걸리지 않으면서 요구조건을 가장 크게 위반할 수 있는 경우 |
+| **Nearest Escape** | 정상 상태에 가장 가까운 허점 | 정상 설계 상태에서 가장 작은 변화로 검사망을 빠져나가는 경우 |
+| **Patch** | 검증계획 수정안 | 발견된 허점을 줄이거나 제거하기 위한 검사·시험 기준 수정 후보 |
+| **Re-test** | 수정 후 재검증 | 수정된 검사 기준을 다시 공격하여 허점이 실제로 사라졌는지 확인하는 과정 |
 | **Validator** | 입력 오류 검사기 | 잘못된 범위, 단위 오류, 존재하지 않는 변수 등을 Solver 실행 전에 차단하는 기능 |
-| **Logical Consistency** | 조건들의 논리적 일관성 | 입력된 설계 요구조건들을 현실적으로 동시에 만족할 수 있는지 확인하는 것 |
+| **Logical Consistency** | 조건들의 논리적 일관성 | 여러 설계 요구조건을 현실적으로 동시에 만족할 수 있는지 확인하는 것 |
 | **Conflict Diagnosis** | 충돌 조건 진단 | 여러 조건이 서로 모순될 때 어떤 조건들이 충돌하는지 찾아주는 기능 |
-| **Constraint Engine** | 공학 조건 변환 엔진 | `A + B <= 30.05` 같은 공학 조건을 Solver가 계산할 수 있는 제약식으로 변환하는 기능 |
-| **Solver (Z3)** | 수학적 조건 계산기 | 주어진 공학 조건들을 만족하거나 위반하는 상태가 존재하는지 결정론적으로 계산하는 도구 |
+| **Constraint Engine** | 공학 조건 변환 엔진 | `A + B <= 30.05`와 같은 공학 조건을 Solver가 계산할 수 있는 제약식으로 변환하는 기능 |
+| **Solver (Z3)** | 수학적 조건 계산기 | 주어진 조건을 만족하거나 위반하는 상태가 존재하는지를 결정론적으로 계산하는 도구 |
 
-### 가장 중요한 개념
+---
 
-이 프로젝트가 찾는 상태는 다음과 같습니다.
+## 1. 어떤 문제를 해결하려는가?
+
+검사계획을 통과했다고 해서 실제 설계 요구조건까지 항상 만족한다고 보장할 수 있을까요?
+
+예를 들어 실제 설계 요구조건이 다음과 같다고 가정합니다.
+
+```text
+A + B <= 30.05
+```
+
+하지만 실제 검사에서는 각각의 값만 확인한다고 가정합니다.
+
+```text
+9.90 <= A <= 10.10
+19.90 <= B <= 20.10
+```
+
+그러면 다음 상태는 검사에서는 합격입니다.
+
+```text
+A = 10.10
+B = 20.10
+```
+
+그러나 실제 설계 요구조건을 계산하면,
+
+```text
+A + B = 30.20
+```
+
+이므로 요구조건은 위반합니다.
+
+즉,
 
 ```text
 현실적으로 가능한 상태
@@ -42,217 +75,170 @@ README를 읽기 전에 아래 용어만 이해하면 전체 프로젝트의 흐
 실제 설계 요구조건은 FAIL
 ```
 
-즉,
+인 상태가 존재합니다.
 
-> **“검사에서는 합격했는데 실제 설계 기준에는 불합격인 상태가 존재하는가?”**
-
-를 찾는 프로젝트입니다.
-
-이러한 상태를 **Verification Escape**라고 부릅니다.
-
-Escape가 발견되면 여기서 끝나는 것이 아니라,
-
-```text
-얼마나 심하게 빠져나갈 수 있는가?
-→ Worst Undetected Violation
-
-정상 상태에서 얼마나 조금 변하면 빠져나가는가?
-→ Nearest Escape
-
-검사 기준을 어떻게 수정할 수 있는가?
-→ Patch
-
-수정 후 정말 허점이 사라졌는가?
-→ Re-test
-```
-
-까지 분석하는 것을 목표로 합니다.
+이 프로젝트에서는 이러한 상태를 **Verification Escape**라고 정의합니다.
 
 ---
 
-## 1. 프로젝트의 핵심 문제
+## 2. 핵심 수학 모델
 
-검사계획을 통과했다고 해서 실제 기술 요구사항까지 항상 만족한다고 보장할 수 있을까?
+프로젝트에서는 세 가지 상태공간을 구분합니다.
 
-이 프로젝트는 다음 상태가 존재하는지를 탐색합니다.
+- **F — Feasible Domain**  
+  현실적으로 가능한 상태
 
-```text
-현실적으로 가능한 상태
-AND
-현재 Verification Plan PASS
-AND
-실제 Requirement FAIL
-```
+- **V — Verification PASS Region**  
+  현재 검사·시험 계획이 합격으로 판단하는 상태
 
-이를 수학적으로 표현하면:
+- **R — Requirement PASS Region**  
+  실제 설계·기술 요구조건을 만족하는 상태
+
+우리가 찾는 것은 다음 영역입니다.
 
 ```text
 F ∩ V ∩ ¬R
 ```
 
-- **F — Feasible Domain**  
-  현실적으로 가능한 Engineering State
+즉,
 
-- **V — Verification PASS Region**  
-  현재 검사·시험 계획이 허용하는 상태
+> **현실적으로 가능하고, 현재 검사에는 합격하지만, 실제 요구조건은 위반하는 상태**
 
-- **R — Requirement PASS Region**  
-  실제 설계·기술 요구사항을 만족하는 상태
+입니다.
 
-`F ∩ V ∩ ¬R`에 해당하는 상태가 존재하면,  
-현재 Verification Plan에는 실제 요구사항 위반 상태가 빠져나갈 수 있는  
-**Verification Escape**가 존재한다고 판단합니다.
+이 영역이 존재한다면 현재 Verification Plan만으로는 실제 Requirement 만족을 보장할 수 없습니다.
 
 ---
 
-## 2. 핵심 아이디어
+## 3. 단순한 Gap 비교와 무엇이 다른가?
 
-이 프로젝트는 제품 자체를 검증하는 것이 아니라,
-
-> **제품을 검증하기 위해 만들어진 Verification Plan 자체가 충분한지를 검증합니다.**
-
-현재 검증계획을 실제 적용 전에 가상으로 Stress Test하여 다음을 확인합니다.
-
-- 검사를 통과하면서 Requirement를 위반할 수 있는가?
-- 정상 상태에서 얼마나 작은 변화로 Escape가 발생하는가?
-- 검사를 통과하면서 Requirement를 얼마나 크게 위반할 수 있는가?
-- Verification Plan을 수정하면 Escape가 실제로 사라지는가?
-
----
-
-
-## 용어 정리
-
-이 프로젝트에서는 다음 용어를 사용합니다.  
-영문 용어 자체보다 **검사계획의 허점을 찾는 과정에서 어떤 의미로 사용되는지**를 중심으로 보면 됩니다.
-
-| 프로젝트 용어 | 한국어 의미 | 이 프로젝트에서의 의미 |
-|---|---|---|
-| **Requirement** | 설계·기술 요구조건 | 제품이나 시스템이 실제로 만족해야 하는 설계 기준 |
-| **Verification Plan** | 검사·시험·검증 계획 | 제품이 요구조건을 만족하는지 확인하기 위해 실제로 적용하는 검사 및 시험 기준 |
-| **Feasible Domain** | 현실적으로 가능한 상태 범위 | 물리적·공정적·운영상 실제로 발생 가능한 Engineering State의 범위 |
-| **Verification Escape** | 검사망을 빠져나가는 요구조건 위반 상태 | 현실적으로 가능하고 현재 검사는 PASS하지만 실제 Requirement는 FAIL하는 상태 |
-| **Stress Test** | 검증계획 허점 공격 | 현재 Verification Plan을 가상으로 공격하여 빠져나갈 수 있는 상태를 능동적으로 탐색하는 과정 |
-| **Worst Undetected Violation** | 최대 미검출 위반 | 검사를 PASS하는 상태 중 Requirement를 가장 크게 위반할 수 있는 경우 |
-| **Nearest Escape** | 가장 가까운 Escape | 정상 설계 상태(Nominal State)에서 가장 작은 변화로 발생할 수 있는 Verification Escape |
-| **Patch** | 검증계획 수정 후보 | 발견된 Verification Gap을 줄이거나 제거하기 위한 검사·시험 기준의 수정안 |
-| **Re-test** | 수정 후 재검증 | 수정된 Verification Plan을 다시 Stress Test하여 Escape가 실제로 제거되었는지 확인하는 과정 |
-| **Validator** | 입력 검증기 | 단위 오류, 잘못된 범위, 존재하지 않는 변수 등 잘못된 Engineering Data를 Solver 실행 전에 차단하는 기능 |
-| **Logical Consistency** | 논리적 일관성 | 입력된 Engineering Requirement들을 현실적으로 동시에 만족할 수 있는 상태가 존재하는지 확인하는 것 |
-| **Conflict Diagnosis** | 충돌 조건 진단 | Engineering Model이 모순될 경우 서로 충돌하는 Constraint 묶음을 찾아주는 기능 |
-| **Constraint Engine** | 공학 조건 변환 엔진 | `A + B <= 30.05`와 같은 공학 조건을 결정론적 Solver가 계산할 수 있는 제약식으로 변환하는 핵심 엔진 |
-
-### 핵심 용어를 한 문장으로 연결하면
-
-```text
-현실적으로 가능한 범위(Feasible Domain) 안에서
-
-현재 검사계획(Verification Plan)은 PASS하지만
-실제 설계 요구조건(Requirement)은 FAIL하는
-
-Verification Escape가 존재하는지
-Stress Test한다.
-```
-
-Escape가 발견되면 시스템은 단순히 FAIL이라고 끝내지 않고,
-
-```text
-얼마나 심하게 빠져나갈 수 있는가?
-→ Worst Undetected Violation
-
-정상 상태에서 얼마나 작은 변화로 빠져나갈 수 있는가?
-→ Nearest Escape
-
-검사계획을 어떻게 수정할 수 있는가?
-→ Patch Candidate
-
-수정 후에도 다시 빠져나갈 수 있는가?
-→ Re-test
-```
-
-까지 분석하는 것을 목표로 합니다.
-
----
-
-## 3. 기존 접근과 구분되는 방향
-
-기존의 Requirement 관리, Inspection Plan 관리, Traceability 도구는 주로 다음을 다룹니다.
+기존의 Requirement 관리, Inspection Plan 관리, Traceability 도구는 주로 다음과 같은 문제를 다룹니다.
 
 - 어떤 Requirement가 존재하는가
 - 어떤 검사 항목과 연결되어 있는가
 - 검사 항목이 누락되었는가
-- 검사계획을 어떻게 생성하거나 관리할 것인가
+- 검사계획을 어떻게 생성하고 관리할 것인가
 
-본 프로젝트는 여기서 한 단계 더 나아가,
+본 프로젝트는 단순한 항목 비교에서 더 나아가,
 
-> **현재 Verification Plan을 가상으로 공격하여, PASS하면서 Requirement를 위반하는 Counterexample을 찾는 것**
+> **현재 검증계획 자체를 가상으로 공격하여, 실제로 빠져나갈 수 있는 Counterexample을 찾는 것**
 
 을 핵심으로 합니다.
 
-주요 방향은 다음과 같습니다.
+### 핵심 발전 방향
 
-1. **Requirement와 Verification의 허용 상태공간 비교**
-2. **`F ∩ V ∩ ¬R` 형태의 Verification Escape 탐색**
-3. **Nearest Escape / Worst Undetected Violation을 통한 Stress Test**
-4. **Patch 생성 후 Re-test를 통한 검증계획 개선 확인**
+**1. Verification Escape 탐색**
 
-Z3, Counterexample, Unsat Core 자체가 새로운 기술이라는 의미는 아닙니다.  
-본 프로젝트의 핵심은 이러한 기술을  
-**Engineering Verification Plan의 충분성 검증 Workflow**로 구성하는 데 있습니다.
+```text
+Feasible
+AND
+Verification PASS
+AND
+Requirement FAIL
+```
+
+인 실제 상태를 Solver가 탐색합니다.
+
+**2. 허점의 심각도 분석**
+
+단순히 Escape의 존재 여부만 확인하지 않습니다.
+
+```text
+가장 심하게 빠져나가는 경우
+→ Worst Undetected Violation
+
+정상 상태에서 가장 조금 변해도 빠져나가는 경우
+→ Nearest Escape
+```
+
+를 분석합니다.
+
+**3. 수정 후 다시 공격**
+
+```text
+Escape 발견
+    ↓
+검증계획 수정안 생성
+    ↓
+수정된 Verification Plan
+    ↓
+다시 Stress Test
+    ↓
+Escape가 실제로 사라졌는지 확인
+```
+
+하는 폐쇄형 검증 흐름을 목표로 합니다.
+
+> Z3, Counterexample, Unsat Core 자체를 새로운 알고리즘이라고 주장하는 프로젝트는 아닙니다.  
+> 핵심은 이러한 기술을 **Engineering Verification Plan의 충분성을 검증하는 Workflow**로 구성하는 것입니다.
 
 ---
 
-## 4. 현재 구현 흐름
+## 4. 현재 시스템의 전체 흐름
+
+현재 개발 중인 구조는 다음과 같습니다.
 
 ```text
 Engineering Case
         ↓
-Constraint Validator
+입력 오류 검사
+Validator
         ↓
+조건 간 논리적 모순 검사
 Logical Consistency Check
         ↓
-Verification Sufficiency Test
+공학 조건을 Solver 식으로 변환
+Constraint Engine
         ↓
-Escape Detection
+검사계획 허점 공격
+Verification Stress Test
         ↓
-Worst / Nearest Escape Analysis
+Verification Escape 탐색
         ↓
-Patch Candidate Generation
+Worst / Nearest Escape 분석
         ↓
-Engineering Practicality Filter
+검증계획 수정 후보
+Patch Candidate
         ↓
-Patch Re-test
+수정안의 공학적 적절성 확인
+        ↓
+수정 후 재검증
+Re-test
 ```
 
-최종 Verification 판단은 LLM이 아니라  
-**결정론적인 Solver(Z3)** 가 수행합니다.
+최종 합격/불합격 논리는 LLM이 직접 판단하지 않고,  
+**결정론적인 Solver(Z3)** 가 계산하도록 설계하고 있습니다.
 
 ---
 
-## 5. TEST 1 ~ 14에서 검증한 내용
+## 5. 지금까지 검증한 기능
 
-| TEST | 검증 내용 | 의미 |
-|---|---|---|
-| TEST 1 | Escape Detection | Verification PASS이면서 Requirement FAIL인 상태 탐색 |
-| TEST 2 | Worst Undetected Violation | 검사망을 통과하면서 가능한 최대 Requirement 위반량 계산 |
-| TEST 3 | Feasible Domain | 현실적으로 가능한 상태 범위 안에서만 Escape 탐색 |
-| TEST 4 | Nearest Escape | Nominal State에서 가장 가까운 Escape 탐색 |
-| TEST 5 | Patch → Re-test | Verification Plan 수정 후 Escape가 사라지는지 재검증 |
-| TEST 6 | Patch Comparison | 여러 Patch 후보를 Stress Test하여 비교 |
-| TEST 7 | Automatic Patch Generation | 발견된 Gap으로부터 Patch 후보 자동 생성 |
-| TEST 8 | Engineering Practicality Filter | Nominal State를 파괴하는 Patch 차단 |
-| TEST 9 | Generic Variable Engine | 변수 이름과 개수가 달라도 동일 엔진이 작동하는지 확인 |
-| TEST 10 | Multiple Constraint Types | Range, Difference, Sum Constraint 처리 |
-| TEST 11 | Constraint Validator | 잘못된 변수, 범위, 단위 등을 Solver 이전에 차단 |
-| TEST 12 | Validator → Solver Pipeline | 검증된 입력만 Solver로 전달 |
-| TEST 13 | Logical Consistency | 형식상 정상이나 전체적으로 모순된 Engineering Model 탐지 |
-| TEST 14 | Conflict Diagnosis | Unsat Core를 이용해 충돌 Constraint subset 식별 |
+초기 Prototype에서는 기능을 하나씩 분리하여 TEST 1~14로 검증했습니다.
+
+| 단계 | 검증한 내용 |
+|---|---|
+| **TEST 1** | 검사에는 합격하지만 Requirement를 위반하는 Escape 탐색 |
+| **TEST 2** | 검사망을 통과하면서 가능한 최대 위반량 계산 |
+| **TEST 3** | 현실적으로 가능한 범위 안에서만 Escape 탐색 |
+| **TEST 4** | 정상 상태에서 가장 가까운 Escape 탐색 |
+| **TEST 5** | 검증계획 수정 후 Escape가 사라지는지 Re-test |
+| **TEST 6** | 여러 수정 후보 비교 |
+| **TEST 7** | Gap을 기반으로 수정 후보 자동 생성 |
+| **TEST 8** | 정상 설계 상태를 파괴하는 비현실적 수정안 차단 |
+| **TEST 9** | 변수 이름과 개수가 달라도 동일 엔진이 작동하는지 확인 |
+| **TEST 10** | 여러 종류의 공학 Constraint 처리 |
+| **TEST 11** | 잘못된 변수, 범위, 단위 등을 Solver 실행 전에 차단 |
+| **TEST 12** | Validator와 Solver 연결 |
+| **TEST 13** | 형식은 정상이나 논리적으로 불가능한 Engineering Model 탐지 |
+| **TEST 14** | 서로 충돌하는 Constraint 묶음 식별 |
 
 ---
 
-## 6. 현재 지원하는 Constraint 예시
+## 6. 현재 지원하는 공학 조건
 
-### Range
+현재 Core Prototype에서는 다음과 같은 기본 조건을 지원합니다.
+
+### 범위 조건
 
 ```text
 min <= X <= max
@@ -264,7 +250,7 @@ min <= X <= max
 9.95 <= D <= 10.05
 ```
 
-### Difference Minimum
+### 차이 조건
 
 ```text
 Y - X >= limit
@@ -276,7 +262,7 @@ Y - X >= limit
 Y - X >= 20.00
 ```
 
-### Sum Upper Bound
+### 합계 상한 조건
 
 ```text
 X + Y + ... <= limit
@@ -288,29 +274,29 @@ X + Y + ... <= limit
 X + Y <= 40.05
 ```
 
-현재는 제한된 Constraint Type을 대상으로 프로토타입을 검증하고 있으며,  
-모든 Engineering Constraint를 지원하는 상태는 아닙니다.
+현재는 핵심 개념 검증을 위한 제한된 Constraint Type만 지원하며,  
+모든 Engineering Constraint를 처리하는 범용 해석기를 구현한 상태는 아닙니다.
 
 ---
 
-## 7. Engineering Validation Layer
+## 7. 잘못된 입력을 그대로 계산하지 않도록 한다
 
-Solver 실행 전에 입력된 Engineering Model을 검증합니다.
+Solver는 입력된 수식을 매우 정확하게 계산하지만,  
+입력 자체가 잘못되었다면 잘못된 문제를 정확하게 풀게 됩니다.
 
-현재 확인하는 항목:
+이를 방지하기 위해 Solver 실행 전에 Engineering Model을 검증합니다.
+
+현재 다음 문제를 탐지할 수 있습니다.
 
 - 존재하지 않는 변수 참조
-- 잘못된 `min / max` 범위
+- 최소값과 최대값이 뒤집힌 범위
 - Nominal 값이 Feasible Domain 밖에 존재하는 경우
 - Verification Range와 Feasible Domain이 완전히 분리된 경우
 - 지원하지 않는 Constraint Type
-- Unit 불일치
-- 전체 Requirement의 논리적 모순
+- 서로 다른 Unit을 잘못 결합한 경우
+- 모든 Requirement를 동시에 만족할 수 없는 논리적 모순
 
-논리적 모순이 발견되면 Z3의 Unsat Core를 이용하여  
-충돌에 관련된 Constraint subset을 식별할 수 있습니다.
-
-예:
+예를 들어,
 
 ```text
 X >= 9.50
@@ -318,15 +304,57 @@ Y >= 29.50
 X + Y <= 38.90
 ```
 
-위 세 조건은 동시에 만족할 수 없으므로 Logical Conflict로 판단합니다.
+는 각 식의 문법 자체는 정상입니다.
+
+하지만 앞의 두 조건 때문에,
+
+```text
+X + Y >= 39.00
+```
+
+이므로 세 조건을 동시에 만족할 수 없습니다.
+
+이러한 경우 Solver 실행 전에 **논리적 모순**으로 판단합니다.
 
 ---
 
-## 8. Verification Stress Analysis
+## 8. 충돌하는 조건까지 찾아낸다
 
-### Escape Detection
+모델이 논리적으로 불가능하다고 판단하는 것에서 끝나지 않고,  
+Z3의 Unsat Core를 이용하여 충돌에 관여한 조건 묶음을 찾아냅니다.
 
-현재 Verification Plan을 통과하면서 Requirement를 위반하는 상태를 탐색합니다.
+예:
+
+```text
+Feasible Domain: X >= 9.50
+Feasible Domain: Y >= 29.50
+Requirement R3: X + Y <= 38.90
+```
+
+이를 통해 엔지니어에게 단순히,
+
+```text
+MODEL ERROR
+```
+
+라고 알리는 것이 아니라,
+
+```text
+이 조건들이 서로 동시에 만족될 수 없습니다.
+```
+
+라고 수정해야 할 위치를 제시할 수 있습니다.
+
+현재 Unsat Core는 **충돌에 관여하는 Constraint subset**을 식별하는 용도로 사용하며,  
+항상 수학적으로 가장 작은 최소 충돌 집합을 보장한다고 주장하지 않습니다.
+
+---
+
+## 9. Verification Stress Test
+
+### Verification Escape
+
+현재 검사계획을 통과하면서 실제 Requirement를 위반하는 상태를 탐색합니다.
 
 ```text
 Feasible
@@ -338,116 +366,204 @@ Requirement FAIL
 
 ### Worst Undetected Violation
 
-검사를 통과하면서 Requirement를 얼마나 크게 위반할 수 있는지를 계산합니다.
+검사에서 합격으로 처리되는 상태 가운데  
+실제 Requirement를 가장 크게 위반할 수 있는 경우를 계산합니다.
 
 ### Nearest Escape
 
-Nominal Engineering State에서 얼마나 작은 변화로 첫 Escape가 발생할 수 있는지를 탐색합니다.
+정상 설계 상태인 Nominal State에서  
+가장 작은 변화로 발생할 수 있는 Escape를 탐색합니다.
 
-### Patch Re-test
+이를 통해 단순히,
 
-발견된 Verification Gap에 대한 수정 후보를 적용한 뒤  
-동일한 Stress Test를 다시 수행하여 Gap이 실제로 제거되었는지 확인합니다.
+```text
+허점 있음 / 없음
+```
+
+만 판단하는 것이 아니라,
+
+```text
+얼마나 쉽게 뚫리는가?
+얼마나 심하게 뚫리는가?
+```
+
+를 함께 분석합니다.
 
 ---
 
-## 9. Engineering Practicality Filter
+## 10. 검증계획 수정과 Re-test
 
-수학적으로 Escape를 제거한다고 해서 항상 좋은 Patch는 아닙니다.
+발견된 Gap을 기반으로 Verification Plan 수정 후보를 만들고,  
+수정된 계획을 다시 동일한 방식으로 공격합니다.
 
-예를 들어 Nominal 값이:
+```text
+현재 Verification Plan
+        ↓
+Escape 발견
+        ↓
+Patch Candidate
+        ↓
+수정된 Verification Plan
+        ↓
+Re-test
+```
+
+수정 후,
+
+```text
+NO COUNTEREXAMPLE FOUND
+```
+
+가 나오면 현재 모델링된 조건과 Feasible Domain 안에서는  
+동일한 Escape가 더 이상 발견되지 않았다고 판단합니다.
+
+---
+
+## 11. 수학적으로 맞는 수정안과 공학적으로 좋은 수정안은 다르다
+
+Escape를 없앴다고 해서 항상 좋은 수정안은 아닙니다.
+
+예를 들어 정상 설계값이,
 
 ```text
 A = 10.00
 ```
 
-인데 Patch가:
+인데 수정안이,
 
 ```text
 A <= 9.95
 ```
 
-라면 Escape는 제거할 수 있지만 정상 설계 상태까지 Reject하게 됩니다.
+라면 Escape는 제거할 수 있지만 정상 설계 상태까지 불합격으로 처리하게 됩니다.
 
-따라서 현재 Prototype에서는 최소한 다음 조건을 확인합니다.
+따라서 수정 후보는 최소한 다음 조건을 함께 확인합니다.
 
 ```text
 Escape 제거
 AND
-Nominal State 보존
+정상 설계 상태 보존
 ```
 
-이를 통해 수학적으로는 효과적이지만  
-Engineering 관점에서는 부적절한 Patch를 구분합니다.
+현재는 이를 **Engineering Practicality Filter**의 첫 단계로 사용하고 있습니다.
+
+향후 실제 데이터가 확보되면 검사 시간, 비용, False Reject, 공정 Capability 등도 추가 검토할 수 있습니다.
 
 ---
 
-## 10. 향후 목표 구조
+## 12. 현재 Core 개발 상태
 
-최종적으로는 다음과 같은 AI-assisted Verification Workflow를 목표로 합니다.
+초기 TEST 1~14에서 개별적으로 검증한 기능을  
+현재 하나의 재사용 가능한 Core Engine으로 통합하고 있습니다.
+
+현재 Core 구조:
+
+```text
+src/core/
+├── models.py
+├── validator.py
+├── constraint_engine.py
+├── stress_tester.py
+└── conflict_analyzer.py
+```
+
+현재까지 Core에 통합된 기능:
+
+```text
+공통 Engineering Data Model
+        ↓
+입력 검증
+        ↓
+공학 Constraint 변환
+        ↓
+논리적 모순 분석
+        ↓
+충돌 조건 진단
+        ↓
+Verification Escape Stress Test
+```
+
+다음 통합 대상은 Verification Plan의 관계조건 모델과 Patch Engine, 전체 Pipeline입니다.
+
+---
+
+## 13. 최종 목표 구조
+
+최종적으로는 비정형 Engineering Document를 AI가 구조화하고,  
+엔지니어가 이를 확인한 뒤 Solver가 검증하도록 하는 구조를 목표로 합니다.
 
 ```text
 도면 / Specification / Inspection Plan
                 ↓
         AI Constraint Extraction
                 ↓
-          Source Traceability
+          원문 Source 표시
                 ↓
-       Engineer Review / Approval
+        Engineer Review / Edit
                 ↓
-         Constraint Validator
+             승인
                 ↓
-      Logical Consistency Check
+        Engineering Validator
                 ↓
-     Verification Stress Test
+       Logical Consistency Check
                 ↓
-        Escape Analysis
+      Verification Stress Test
                 ↓
- Verification Improvement Candidate
+          Escape Analysis
                 ↓
-             Re-test
+      Verification Plan 개선안
+                ↓
+              Re-test
 ```
 
-AI는 비정형 엔지니어링 문서에서 Constraint를 구조화하는 역할을 담당하고,  
-최종 Verification Sufficiency 판단은 결정론적인 Solver가 수행하는 구조를 목표로 합니다.
+### AI의 역할
 
----
-
-## 11. 현재 개발 단계
-
-현재는 완성된 제품이 아니라  
-**핵심 Verification Engine의 Prototype 단계**입니다.
-
-TEST 1~14를 통해 주요 개념과 개별 기능을 검증했으며,  
-다음 단계에서는 여러 Prototype 파일에 흩어진 기능을  
-하나의 재사용 가능한 Core Engine으로 통합할 예정입니다.
-
-예상 구조:
+AI는 비정형 문서에서 다음과 같은 정보를 구조화하는 역할을 담당합니다.
 
 ```text
-src/
-├── models.py
-├── validator.py
-├── constraint_engine.py
-├── stress_tester.py
-├── conflict_analyzer.py
-├── patch_engine.py
-└── pipeline.py
+변수
+단위
+허용 범위
+설계 Requirement
+검사 기준
+관계식
+원문 출처
 ```
+
+### Solver의 역할
+
+최종적으로,
+
+```text
+검사에는 합격하지만
+실제 Requirement는 위반하는 상태가 존재하는가?
+```
+
+라는 논리 판단은 LLM이 아니라 **결정론적 Solver**가 수행합니다.
+
+즉,
+
+```text
+AI = 문서 이해 및 구조화 보조
+Engineer = 검토 및 승인
+Solver = 최종 논리 검증
+```
+
+의 역할 분리를 목표로 합니다.
 
 ---
 
-## 12. 현재 범위의 한계
+## 14. 현재 범위와 한계
 
-현재 Prototype은 모든 품질 문제나 Engineering Failure Mode를 탐지하는 시스템이 아닙니다.
+이 프로젝트는 모든 품질 문제나 Engineering Failure Mode를 탐지하는 시스템이 아닙니다.
 
-현재 주요 대상은 다음과 같은 Verification Gap입니다.
+현재 주요 대상은 다음과 같은 **모델링 가능한 Verification Gap**입니다.
 
-- **Acceptance Gap**
-- **Relationship Gap**
-- **Requirement Coverage Gap**
+- 검사 허용범위와 실제 요구 허용범위가 다른 경우
+- 개별 변수는 합격하지만 변수 간 관계조건을 위반하는 경우
+- Requirement가 존재하지만 Verification Plan에서 충분히 다루지 않는 경우
 
-다음 항목은 현재 Prototype의 주요 범위 밖입니다.
+현재 주요 범위 밖의 항목:
 
 - Measurement Uncertainty
 - Sampling Strategy
@@ -457,24 +573,22 @@ src/
 - 전체 GD&T 자동 해석
 - 모든 종류의 비선형 Engineering Constraint
 
-또한 다음 결과:
+또한,
 
 ```text
 NO COUNTEREXAMPLE FOUND
 ```
 
-은
+는
 
-> **현재 모델링된 Constraint와 Feasible Domain 안에서 Counterexample을 발견하지 못했다.**
+> **현재 모델링된 Constraint와 Feasible Domain 안에서 Counterexample을 발견하지 못했다**
 
-는 의미이며, 실제 물리 시스템의 절대적인 안전을 의미하지 않습니다.
+는 의미입니다.
+
+실제 물리 시스템의 절대적 안전을 의미하지 않습니다.
 
 ---
 
-## 13. 프로젝트 한 문장 요약
+## 프로젝트 한 문장 요약
 
-> **제품을 검증하는 시스템이 아니라, 제품을 검증하는 Verification Plan 자체를 실제 적용 전에 가상으로 공격하여 그 충분성을 검증하는 Engineering Verification Stress Test 시스템**
-EOF
-
-echo "README.md 교체 완료"
-git diff -- README.md
+> **설계 요구조건과 실제 검사계획을 각각 제약조건으로 모델링하고, 현실적으로 가능한 상태 중 검사에는 합격하지만 실제 요구조건은 위반하는 상태를 능동적으로 탐색하여 검증계획 자체의 충분성을 평가하는 Engineering Verification Stress Test 시스템**
