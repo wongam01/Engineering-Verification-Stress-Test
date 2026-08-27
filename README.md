@@ -8,6 +8,66 @@ cat > README.md <<'EOF'
 현재는 핵심 검증 엔진의 프로토타입을 개발하고 있으며,  
 향후 AI를 이용한 엔지니어링 문서의 Constraint 추출 기능을 연결하는 것을 목표로 합니다.
 
+
+## 먼저 보는 핵심 용어
+
+README를 읽기 전에 아래 용어만 이해하면 전체 프로젝트의 흐름을 쉽게 볼 수 있습니다.
+
+| 용어 | 쉬운 의미 | 이 프로젝트에서의 의미 |
+|---|---|---|
+| **Requirement** | 설계·기술 요구조건 | 제품이나 시스템이 실제로 만족해야 하는 설계 기준 |
+| **Verification Plan** | 검사·시험·검증 계획 | 실제 현장에서 제품이 요구조건을 만족하는지 확인하기 위해 사용하는 검사 및 시험 기준 |
+| **Feasible Domain** | 현실적으로 가능한 범위 | 물리적·공정적·운영상 실제로 발생할 수 있는 상태 범위 |
+| **Verification Escape** | 검사망을 빠져나가는 요구조건 위반 상태 | 현실적으로 가능하고, 현재 검사에는 PASS하지만 실제 설계 요구조건은 FAIL하는 상태 |
+| **Stress Test** | 검사 기준 허점 공격 | 현재 검사계획을 가상으로 공격하여 빠져나갈 수 있는 상태를 능동적으로 탐색하는 과정 |
+| **Worst Undetected Violation** | 최대 미검출 위반 | 검사를 PASS하면서 설계 요구조건을 가장 크게 위반할 수 있는 경우 |
+| **Nearest Escape** | 정상 상태에 가장 가까운 허점 | 정상 설계값에서 가장 작은 변화만으로 검사망을 빠져나갈 수 있는 경우 |
+| **Patch** | 검사 기준 수정안 | 발견된 검사 허점을 줄이거나 제거하기 위한 검사·시험 기준 수정 후보 |
+| **Re-test** | 수정 후 재검증 | 수정한 검사 기준을 다시 공격하여 허점이 실제로 사라졌는지 확인하는 과정 |
+| **Validator** | 입력 오류 검사기 | 잘못된 범위, 단위 오류, 존재하지 않는 변수 등을 Solver 실행 전에 차단하는 기능 |
+| **Logical Consistency** | 조건들의 논리적 일관성 | 입력된 설계 요구조건들을 현실적으로 동시에 만족할 수 있는지 확인하는 것 |
+| **Conflict Diagnosis** | 충돌 조건 진단 | 여러 조건이 서로 모순될 때 어떤 조건들이 충돌하는지 찾아주는 기능 |
+| **Constraint Engine** | 공학 조건 변환 엔진 | `A + B <= 30.05` 같은 공학 조건을 Solver가 계산할 수 있는 제약식으로 변환하는 기능 |
+| **Solver (Z3)** | 수학적 조건 계산기 | 주어진 공학 조건들을 만족하거나 위반하는 상태가 존재하는지 결정론적으로 계산하는 도구 |
+
+### 가장 중요한 개념
+
+이 프로젝트가 찾는 상태는 다음과 같습니다.
+
+```text
+현실적으로 가능한 상태
+        AND
+현재 검사계획은 PASS
+        AND
+실제 설계 요구조건은 FAIL
+```
+
+즉,
+
+> **“검사에서는 합격했는데 실제 설계 기준에는 불합격인 상태가 존재하는가?”**
+
+를 찾는 프로젝트입니다.
+
+이러한 상태를 **Verification Escape**라고 부릅니다.
+
+Escape가 발견되면 여기서 끝나는 것이 아니라,
+
+```text
+얼마나 심하게 빠져나갈 수 있는가?
+→ Worst Undetected Violation
+
+정상 상태에서 얼마나 조금 변하면 빠져나가는가?
+→ Nearest Escape
+
+검사 기준을 어떻게 수정할 수 있는가?
+→ Patch
+
+수정 후 정말 허점이 사라졌는가?
+→ Re-test
+```
+
+까지 분석하는 것을 목표로 합니다.
+
 ---
 
 ## 1. 프로젝트의 핵심 문제
@@ -57,6 +117,60 @@ F ∩ V ∩ ¬R
 - 정상 상태에서 얼마나 작은 변화로 Escape가 발생하는가?
 - 검사를 통과하면서 Requirement를 얼마나 크게 위반할 수 있는가?
 - Verification Plan을 수정하면 Escape가 실제로 사라지는가?
+
+---
+
+
+## 용어 정리
+
+이 프로젝트에서는 다음 용어를 사용합니다.  
+영문 용어 자체보다 **검사계획의 허점을 찾는 과정에서 어떤 의미로 사용되는지**를 중심으로 보면 됩니다.
+
+| 프로젝트 용어 | 한국어 의미 | 이 프로젝트에서의 의미 |
+|---|---|---|
+| **Requirement** | 설계·기술 요구조건 | 제품이나 시스템이 실제로 만족해야 하는 설계 기준 |
+| **Verification Plan** | 검사·시험·검증 계획 | 제품이 요구조건을 만족하는지 확인하기 위해 실제로 적용하는 검사 및 시험 기준 |
+| **Feasible Domain** | 현실적으로 가능한 상태 범위 | 물리적·공정적·운영상 실제로 발생 가능한 Engineering State의 범위 |
+| **Verification Escape** | 검사망을 빠져나가는 요구조건 위반 상태 | 현실적으로 가능하고 현재 검사는 PASS하지만 실제 Requirement는 FAIL하는 상태 |
+| **Stress Test** | 검증계획 허점 공격 | 현재 Verification Plan을 가상으로 공격하여 빠져나갈 수 있는 상태를 능동적으로 탐색하는 과정 |
+| **Worst Undetected Violation** | 최대 미검출 위반 | 검사를 PASS하는 상태 중 Requirement를 가장 크게 위반할 수 있는 경우 |
+| **Nearest Escape** | 가장 가까운 Escape | 정상 설계 상태(Nominal State)에서 가장 작은 변화로 발생할 수 있는 Verification Escape |
+| **Patch** | 검증계획 수정 후보 | 발견된 Verification Gap을 줄이거나 제거하기 위한 검사·시험 기준의 수정안 |
+| **Re-test** | 수정 후 재검증 | 수정된 Verification Plan을 다시 Stress Test하여 Escape가 실제로 제거되었는지 확인하는 과정 |
+| **Validator** | 입력 검증기 | 단위 오류, 잘못된 범위, 존재하지 않는 변수 등 잘못된 Engineering Data를 Solver 실행 전에 차단하는 기능 |
+| **Logical Consistency** | 논리적 일관성 | 입력된 Engineering Requirement들을 현실적으로 동시에 만족할 수 있는 상태가 존재하는지 확인하는 것 |
+| **Conflict Diagnosis** | 충돌 조건 진단 | Engineering Model이 모순될 경우 서로 충돌하는 Constraint 묶음을 찾아주는 기능 |
+| **Constraint Engine** | 공학 조건 변환 엔진 | `A + B <= 30.05`와 같은 공학 조건을 결정론적 Solver가 계산할 수 있는 제약식으로 변환하는 핵심 엔진 |
+
+### 핵심 용어를 한 문장으로 연결하면
+
+```text
+현실적으로 가능한 범위(Feasible Domain) 안에서
+
+현재 검사계획(Verification Plan)은 PASS하지만
+실제 설계 요구조건(Requirement)은 FAIL하는
+
+Verification Escape가 존재하는지
+Stress Test한다.
+```
+
+Escape가 발견되면 시스템은 단순히 FAIL이라고 끝내지 않고,
+
+```text
+얼마나 심하게 빠져나갈 수 있는가?
+→ Worst Undetected Violation
+
+정상 상태에서 얼마나 작은 변화로 빠져나갈 수 있는가?
+→ Nearest Escape
+
+검사계획을 어떻게 수정할 수 있는가?
+→ Patch Candidate
+
+수정 후에도 다시 빠져나갈 수 있는가?
+→ Re-test
+```
+
+까지 분석하는 것을 목표로 합니다.
 
 ---
 
