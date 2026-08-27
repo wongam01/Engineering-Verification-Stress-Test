@@ -41,7 +41,7 @@ def add_verification_plan(solver, A, B):
 
 
 # ---------------------------------------------------------
-# Test 1
+# TEST 1
 # Escape Existence
 # ---------------------------------------------------------
 
@@ -60,12 +60,10 @@ def find_escape():
     add_feasible_domain(solver, A, B)
     add_verification_plan(solver, A, B)
 
-    # Engineering Requirement:
-    #
+    # Engineering Requirement
     # A + B <= 30.05
     #
-    # 따라서 Requirement 위반 상태는:
-    #
+    # Requirement 위반:
     # A + B > 30.05
 
     solver.add(A + B > RealVal("30.05"))
@@ -94,7 +92,7 @@ def find_escape():
 
 
 # ---------------------------------------------------------
-# Test 2
+# TEST 2
 # Worst Undetected Violation
 # ---------------------------------------------------------
 
@@ -114,16 +112,13 @@ def find_worst_undetected_violation():
 
     requirement_limit = RealVal("30.05")
 
-    # 실제 Requirement 위반 상태만 고려한다.
+    # Requirement 위반 상태만 고려
     optimizer.add(A + B > requirement_limit)
 
-    # 위반 크기:
-    #
-    # (실제 값) - (Requirement Limit)
-    #
-    # 이 값을 최대화한다.
+    # 위반 크기
     violation = A + B - requirement_limit
 
+    # 최대 위반 상태 탐색
     optimizer.maximize(violation)
 
     if optimizer.check() == sat:
@@ -155,6 +150,82 @@ def find_worst_undetected_violation():
 
 
 # ---------------------------------------------------------
+# TEST 3
+# Feasible Domain Boundary
+# ---------------------------------------------------------
+
+def test_feasible_domain_boundary():
+    """
+    Feasible Domain이 Verification Plan보다 좁을 때,
+    Solver가 현실적으로 허용된 범위를 넘어가지 않는지 확인한다.
+    """
+
+    A = Real("boundary_A")
+    B = Real("boundary_B")
+
+    optimizer = Optimize()
+
+    # ------------------------------------------
+    # 좁은 Feasible Domain
+    # ------------------------------------------
+
+    optimizer.add(A >= RealVal("9.5"))
+    optimizer.add(A <= RealVal("10.04"))
+
+    optimizer.add(B >= RealVal("19.5"))
+    optimizer.add(B <= RealVal("20.04"))
+
+    # ------------------------------------------
+    # Verification Plan
+    # ------------------------------------------
+
+    optimizer.add(A >= RealVal("9.9"))
+    optimizer.add(A <= RealVal("10.1"))
+
+    optimizer.add(B >= RealVal("19.9"))
+    optimizer.add(B <= RealVal("20.1"))
+
+    # ------------------------------------------
+    # Engineering Requirement
+    # ------------------------------------------
+
+    requirement_limit = RealVal("30.05")
+
+    optimizer.add(A + B > requirement_limit)
+
+    violation = A + B - requirement_limit
+
+    optimizer.maximize(violation)
+
+    if optimizer.check() == sat:
+        model = optimizer.model()
+
+        a_value = to_float(model[A])
+        b_value = to_float(model[B])
+
+        total = a_value + b_value
+        violation_value = total - 30.05
+
+        print("FEASIBLE DOMAIN BOUNDARY TEST")
+        print("-----------------------------")
+        print(f"A = {a_value:.3f}")
+        print(f"B = {b_value:.3f}")
+        print()
+        print(f"A + B              = {total:.3f}")
+        print("Requirement Limit  = 30.050")
+        print(f"Violation          = {violation_value:.3f}")
+        print()
+        print("Expected maximum:")
+        print("A <= 10.040")
+        print("B <= 20.040")
+
+        return violation_value
+
+    print("NO ESCAPE FOUND INSIDE FEASIBLE DOMAIN")
+    return None
+
+
+# ---------------------------------------------------------
 # Main
 # ---------------------------------------------------------
 
@@ -166,6 +237,7 @@ if __name__ == "__main__":
     print("========================================")
     print()
 
+    # TEST 1
     print("TEST 1")
     print("Escape Existence")
     print()
@@ -174,9 +246,19 @@ if __name__ == "__main__":
     print()
     print()
 
+    # TEST 2
     print("TEST 2")
     print("Worst Undetected Violation")
     print()
     find_worst_undetected_violation()
+
+    print()
+    print()
+
+    # TEST 3
+    print("TEST 3")
+    print("Feasible Domain Boundary")
+    print()
+    test_feasible_domain_boundary()
 
     print()
