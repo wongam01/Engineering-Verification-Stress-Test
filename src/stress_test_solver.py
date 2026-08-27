@@ -1,4 +1,4 @@
-from z3 import Real, RealVal, Solver, Optimize, sat
+from z3 import Real, RealVal, Int, Abs, Solver, Optimize, sat
 
 
 # ---------------------------------------------------------
@@ -30,7 +30,6 @@ def add_feasible_domain(solver, A, B):
 def add_verification_plan(solver, A, B):
     """
     현재 Verification / Inspection Plan.
-    이 조건을 모두 만족하면 검사에서는 PASS라고 가정한다.
     """
 
     solver.add(A >= RealVal("9.9"))
@@ -60,7 +59,7 @@ def find_escape():
     add_feasible_domain(solver, A, B)
     add_verification_plan(solver, A, B)
 
-    # Engineering Requirement
+    # Engineering Requirement:
     # A + B <= 30.05
     #
     # Requirement 위반:
@@ -112,13 +111,10 @@ def find_worst_undetected_violation():
 
     requirement_limit = RealVal("30.05")
 
-    # Requirement 위반 상태만 고려
     optimizer.add(A + B > requirement_limit)
 
-    # 위반 크기
     violation = A + B - requirement_limit
 
-    # 최대 위반 상태 탐색
     optimizer.maximize(violation)
 
     if optimizer.check() == sat:
@@ -165,30 +161,21 @@ def test_feasible_domain_boundary():
 
     optimizer = Optimize()
 
-    # ------------------------------------------
     # 좁은 Feasible Domain
-    # ------------------------------------------
-
     optimizer.add(A >= RealVal("9.5"))
     optimizer.add(A <= RealVal("10.04"))
 
     optimizer.add(B >= RealVal("19.5"))
     optimizer.add(B <= RealVal("20.04"))
 
-    # ------------------------------------------
     # Verification Plan
-    # ------------------------------------------
-
     optimizer.add(A >= RealVal("9.9"))
     optimizer.add(A <= RealVal("10.1"))
 
     optimizer.add(B >= RealVal("19.9"))
     optimizer.add(B <= RealVal("20.1"))
 
-    # ------------------------------------------
     # Engineering Requirement
-    # ------------------------------------------
-
     requirement_limit = RealVal("30.05")
 
     optimizer.add(A + B > requirement_limit)
@@ -222,6 +209,136 @@ def test_feasible_domain_boundary():
         return violation_value
 
     print("NO ESCAPE FOUND INSIDE FEASIBLE DOMAIN")
+    return None
+
+
+# ---------------------------------------------------------
+# TEST 4
+# Nearest Escape
+# ---------------------------------------------------------
+
+def find_nearest_escape():
+    """
+    Nominal State에서 가장 작은 변화로
+    Verification Plan을 통과하면서
+    Requirement를 위반하는 상태를 찾는다.
+
+    Prototype resolution:
+    0.01 mm
+
+    따라서 모든 값을 100배한 Integer로 계산한다.
+    """
+
+    # 0.01 mm 단위 Integer
+    #
+    # 10.00 mm -> 1000
+    # 20.00 mm -> 2000
+
+    A = Int("nearest_A")
+    B = Int("nearest_B")
+
+    optimizer = Optimize()
+
+    # ------------------------------------------
+    # Nominal State
+    # ------------------------------------------
+
+    nominal_A = 1000
+    nominal_B = 2000
+
+    # ------------------------------------------
+    # Feasible Domain
+    #
+    # A = 9.50 ~ 10.50
+    # B = 19.50 ~ 20.50
+    # ------------------------------------------
+
+    optimizer.add(A >= 950)
+    optimizer.add(A <= 1050)
+
+    optimizer.add(B >= 1950)
+    optimizer.add(B <= 2050)
+
+    # ------------------------------------------
+    # Verification Plan
+    #
+    # A = 9.90 ~ 10.10
+    # B = 19.90 ~ 20.10
+    # ------------------------------------------
+
+    optimizer.add(A >= 990)
+    optimizer.add(A <= 1010)
+
+    optimizer.add(B >= 1990)
+    optimizer.add(B <= 2010)
+
+    # ------------------------------------------
+    # Engineering Requirement
+    #
+    # A + B <= 30.05
+    #
+    # Resolution이 0.01 mm이므로
+    # 첫 번째 표현 가능한 FAIL은 30.06
+    # ------------------------------------------
+
+    optimizer.add(A + B >= 3006)
+
+    # ------------------------------------------
+    # Nominal State에서의 총 변화량
+    # L1 Distance
+    # ------------------------------------------
+
+    distance = (
+        Abs(A - nominal_A)
+        + Abs(B - nominal_B)
+    )
+
+    optimizer.minimize(distance)
+
+    if optimizer.check() == sat:
+        model = optimizer.model()
+
+        a_scaled = model[A].as_long()
+        b_scaled = model[B].as_long()
+
+        distance_scaled = model.eval(distance).as_long()
+
+        a_value = a_scaled / 100
+        b_value = b_scaled / 100
+        total = a_value + b_value
+        distance_value = distance_scaled / 100
+
+        print("NEAREST ESCAPE")
+        print("-----------------------------")
+
+        print("Nominal State")
+        print("A = 10.000")
+        print("B = 20.000")
+
+        print()
+
+        print("Nearest Escape State")
+        print(f"A = {a_value:.3f}")
+        print(f"B = {b_value:.3f}")
+
+        print()
+
+        print(f"A + B              = {total:.3f}")
+        print("Requirement Limit  = 30.050")
+
+        print()
+
+        print(f"Minimum Escape Distance = {distance_value:.3f} mm")
+
+        print()
+
+        print("Feasible Domain   -> PASS")
+        print("Verification Plan -> PASS")
+        print("Requirement       -> FAIL")
+
+        return distance_value
+
+    print("NO NEAREST ESCAPE FOUND")
     return None
 
 
@@ -260,5 +377,14 @@ if __name__ == "__main__":
     print("Feasible Domain Boundary")
     print()
     test_feasible_domain_boundary()
+
+    print()
+    print()
+
+    # TEST 4
+    print("TEST 4")
+    print("Nearest Escape")
+    print()
+    find_nearest_escape()
 
     print()
