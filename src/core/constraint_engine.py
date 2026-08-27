@@ -1,17 +1,18 @@
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
 
 from z3 import (
+    And,
     ArithRef,
     BoolRef,
+    Or,
     Real,
     RealVal,
 )
 
 from src.core.models import (
+    ConstraintSpec,
     EngineeringCase,
-    RequirementSpec,
 )
 
 
@@ -34,8 +35,8 @@ def z3_value(value: Decimal) -> ArithRef:
 @dataclass
 class Z3VariableSet:
     """
-    하나의 EngineeringCase에서 생성된
-    Z3 변수 모음.
+    EngineeringCase에서 생성한
+    Z3 Variable 모음.
     """
 
     variables: dict[str, ArithRef]
@@ -44,36 +45,22 @@ class Z3VariableSet:
         self,
         name: str,
     ) -> ArithRef:
-        """
-        변수 이름으로 Z3 Variable을 가져온다.
-        """
 
         return self.variables[name]
 
 
 # =========================================================
-# REQUIREMENT EXPRESSION
+# CONSTRAINT EXPRESSION
 # =========================================================
 
 @dataclass
 class RequirementExpression:
     """
-    하나의 Requirement를 Z3 식으로 변환한 결과.
+    Engineering Constraint를
+    Z3 Expression으로 변환한 결과.
 
-    pass_condition:
-        Requirement를 만족하는 조건
-
-    fail_condition:
-        Requirement를 위반하는 조건
-
-    measured_expression:
-        실제 Engineering 값 계산에 사용되는 식
-
-    limit_value:
-        비교 기준값
-
-    violation_direction:
-        upper / lower / range
+    기존 Core 코드와 호환하기 위해
+    이름은 RequirementExpression을 유지한다.
     """
 
     requirement_id: str
@@ -83,6 +70,7 @@ class RequirementExpression:
     fail_condition: BoolRef
 
     measured_expression: ArithRef | None = None
+
     limit_value: Decimal | None = None
 
     violation_direction: str | None = None
@@ -96,22 +84,6 @@ def create_z3_variables(
     case: EngineeringCase,
     prefix: str = "core",
 ) -> Z3VariableSet:
-    """
-    EngineeringCase의 Variable 이름을 읽어
-    Z3 Real Variable을 자동 생성한다.
-
-    예:
-
-    X
-    Y
-    D
-
-        ↓
-
-    core_X
-    core_Y
-    core_D
-    """
 
     variables = {}
 
@@ -134,10 +106,6 @@ def build_feasible_constraints(
     case: EngineeringCase,
     z3_variables: Z3VariableSet,
 ) -> list[BoolRef]:
-    """
-    EngineeringCase의 Feasible Domain을
-    Z3 Constraint 목록으로 변환한다.
-    """
 
     constraints = []
 
@@ -167,6 +135,184 @@ def build_feasible_constraints(
 
 
 # =========================================================
+# RANGE
+# =========================================================
+
+def build_range_constraint(
+    constraint: ConstraintSpec,
+    z3_variables: Z3VariableSet,
+) -> RequirementExpression:
+
+    variable = z3_variables.get(
+        constraint.variable
+    )
+
+    minimum = z3_value(
+        constraint.min_value
+    )
+
+    maximum = z3_value(
+        constraint.max_value
+    )
+
+    pass_condition = And(
+        variable >= minimum,
+        variable <= maximum,
+    )
+
+    fail_condition = Or(
+        variable < minimum,
+        variable > maximum,
+    )
+
+    return RequirementExpression(
+        requirement_id=constraint.id,
+        requirement_type=constraint.type,
+
+        pass_condition=pass_condition,
+        fail_condition=fail_condition,
+
+        measured_expression=variable,
+
+        violation_direction="range",
+    )
+
+
+# =========================================================
+# DIFFERENCE MINIMUM
+# =========================================================
+
+def build_difference_constraint(
+    constraint: ConstraintSpec,
+    z3_variables: Z3VariableSet,
+) -> RequirementExpression:
+
+    left = z3_variables.get(
+        constraint.left
+    )
+
+    right = z3_variables.get(
+        constraint.right
+    )
+
+    expression = (
+        left - right
+    )
+
+    minimum = z3_value(
+        constraint.min_value
+    )
+
+    return RequirementExpression(
+        requirement_id=constraint.id,
+        requirement_type=constraint.type,
+
+        pass_condition=(
+            expression >= minimum
+        ),
+
+        fail_condition=(
+            expression < minimum
+        ),
+
+        measured_expression=expression,
+
+        limit_value=constraint.min_value,
+
+        violation_direction="lower",
+    )
+
+
+# =========================================================
+# SUM UPPER
+# =========================================================
+
+def build_sum_upper_constraint(
+    constraint: ConstraintSpec,
+    z3_variables: Z3VariableSet,
+) -> RequirementExpression:
+
+    expression = 0
+
+    for variable_name in (
+        constraint.variables
+    ):
+
+        expression = (
+            expression
+            + z3_variables.get(
+                variable_name
+            )
+        )
+
+    limit = z3_value(
+        constraint.limit
+    )
+
+    return RequirementExpression(
+        requirement_id=constraint.id,
+        requirement_type=constraint.type,
+
+        pass_condition=(
+            expression <= limit
+        ),
+
+        fail_condition=(
+            expression > limit
+        ),
+
+        measured_expression=expression,
+
+        limit_value=constraint.limit,
+
+        violation_direction="upper",
+    )
+
+
+# =========================================================
+# GENERIC CONSTRAINT BUILDER
+# =========================================================
+
+def build_requirement_expression(
+    requirement: ConstraintSpec,
+    z3_variables: Z3VariableSet,
+) -> RequirementExpression:
+    """
+    Requirement와 Verification Constraint가
+    공통으로 사용하는 Z3 변환 함수.
+    """
+
+    if requirement.type == "range":
+
+        return build_range_constraint(
+            requirement,
+            z3_variables,
+        )
+
+    if (
+        requirement.type
+        == "difference_min"
+    ):
+
+        return build_difference_constraint(
+            requirement,
+            z3_variables,
+        )
+
+    if requirement.type == "sum_upper":
+
+        return build_sum_upper_constraint(
+            requirement,
+            z3_variables,
+        )
+
+    raise ValueError(
+        "Unsupported constraint type: "
+        f"{requirement.type}"
+    )
+
+
+# =========================================================
 # VERIFICATION PLAN
 # =========================================================
 
@@ -175,11 +321,17 @@ def build_verification_constraints(
     z3_variables: Z3VariableSet,
 ) -> list[BoolRef]:
     """
-    현재 Verification Plan을
-    Z3 Constraint 목록으로 변환한다.
+    Verification Plan 전체를 생성한다.
+
+    1. 각 Variable의 Verification Range
+    2. 추가 Verification 관계조건
     """
 
     constraints = []
+
+    # -----------------------------------------------------
+    # VARIABLE VERIFICATION RANGES
+    # -----------------------------------------------------
 
     for name, variable_spec in (
         case.variables.items()
@@ -203,212 +355,26 @@ def build_verification_constraints(
             )
         )
 
-    return constraints
+    # -----------------------------------------------------
+    # RELATIONAL VERIFICATION CONSTRAINTS
+    # -----------------------------------------------------
 
-
-# =========================================================
-# RANGE REQUIREMENT
-# =========================================================
-
-def build_range_requirement(
-    requirement: RequirementSpec,
-    z3_variables: Z3VariableSet,
-) -> RequirementExpression:
-    """
-    Range Requirement:
-
-        minimum <= X <= maximum
-    """
-
-    variable = z3_variables.get(
-        requirement.variable
-    )
-
-    minimum = z3_value(
-        requirement.min_value
-    )
-
-    maximum = z3_value(
-        requirement.max_value
-    )
-
-    pass_condition = (
-        (variable >= minimum)
-        &
-        (variable <= maximum)
-    )
-
-    fail_condition = (
-        (variable < minimum)
-        |
-        (variable > maximum)
-    )
-
-    return RequirementExpression(
-        requirement_id=requirement.id,
-        requirement_type=requirement.type,
-
-        pass_condition=pass_condition,
-        fail_condition=fail_condition,
-
-        measured_expression=variable,
-
-        violation_direction="range",
-    )
-
-
-# =========================================================
-# DIFFERENCE MINIMUM
-# =========================================================
-
-def build_difference_requirement(
-    requirement: RequirementSpec,
-    z3_variables: Z3VariableSet,
-) -> RequirementExpression:
-    """
-    Difference Minimum Requirement:
-
-        left - right >= minimum
-    """
-
-    left = z3_variables.get(
-        requirement.left
-    )
-
-    right = z3_variables.get(
-        requirement.right
-    )
-
-    expression = (
-        left - right
-    )
-
-    minimum = z3_value(
-        requirement.min_value
-    )
-
-    pass_condition = (
-        expression >= minimum
-    )
-
-    fail_condition = (
-        expression < minimum
-    )
-
-    return RequirementExpression(
-        requirement_id=requirement.id,
-        requirement_type=requirement.type,
-
-        pass_condition=pass_condition,
-        fail_condition=fail_condition,
-
-        measured_expression=expression,
-
-        limit_value=(
-            requirement.min_value
-        ),
-
-        violation_direction="lower",
-    )
-
-
-# =========================================================
-# SUM UPPER
-# =========================================================
-
-def build_sum_upper_requirement(
-    requirement: RequirementSpec,
-    z3_variables: Z3VariableSet,
-) -> RequirementExpression:
-    """
-    Sum Upper Requirement:
-
-        X + Y + ... <= limit
-    """
-
-    expression = 0
-
-    for variable_name in (
-        requirement.variables
+    for verification_constraint in (
+        case.verification_constraints
     ):
 
         expression = (
-            expression
-            + z3_variables.get(
-                variable_name
+            build_requirement_expression(
+                verification_constraint,
+                z3_variables,
             )
         )
 
-    limit = z3_value(
-        requirement.limit
-    )
-
-    pass_condition = (
-        expression <= limit
-    )
-
-    fail_condition = (
-        expression > limit
-    )
-
-    return RequirementExpression(
-        requirement_id=requirement.id,
-        requirement_type=requirement.type,
-
-        pass_condition=pass_condition,
-        fail_condition=fail_condition,
-
-        measured_expression=expression,
-
-        limit_value=(
-            requirement.limit
-        ),
-
-        violation_direction="upper",
-    )
-
-
-# =========================================================
-# GENERIC REQUIREMENT BUILDER
-# =========================================================
-
-def build_requirement_expression(
-    requirement: RequirementSpec,
-    z3_variables: Z3VariableSet,
-) -> RequirementExpression:
-    """
-    Requirement Type을 확인한 뒤
-    적절한 Z3 Constraint Builder로 전달한다.
-    """
-
-    if requirement.type == "range":
-
-        return build_range_requirement(
-            requirement,
-            z3_variables,
+        constraints.append(
+            expression.pass_condition
         )
 
-    if (
-        requirement.type
-        == "difference_min"
-    ):
-
-        return build_difference_requirement(
-            requirement,
-            z3_variables,
-        )
-
-    if requirement.type == "sum_upper":
-
-        return build_sum_upper_requirement(
-            requirement,
-            z3_variables,
-        )
-
-    raise ValueError(
-        "Unsupported requirement type: "
-        f"{requirement.type}"
-    )
+    return constraints
 
 
 # =========================================================
@@ -419,22 +385,31 @@ def build_all_requirement_expressions(
     case: EngineeringCase,
     z3_variables: Z3VariableSet,
 ) -> list[RequirementExpression]:
-    """
-    EngineeringCase에 있는 모든 Requirement를
-    Z3 Expression으로 변환한다.
-    """
 
-    expressions = []
-
-    for requirement in (
-        case.requirements
-    ):
-
-        expressions.append(
-            build_requirement_expression(
-                requirement,
-                z3_variables,
-            )
+    return [
+        build_requirement_expression(
+            requirement,
+            z3_variables,
         )
+        for requirement
+        in case.requirements
+    ]
 
-    return expressions
+
+# =========================================================
+# VERIFICATION EXPRESSIONS
+# =========================================================
+
+def build_all_verification_expressions(
+    case: EngineeringCase,
+    z3_variables: Z3VariableSet,
+) -> list[RequirementExpression]:
+
+    return [
+        build_requirement_expression(
+            constraint,
+            z3_variables,
+        )
+        for constraint
+        in case.verification_constraints
+    ]

@@ -10,10 +10,7 @@ from typing import Any
 def to_decimal(value: Any) -> Decimal:
     """
     int, float, str, Decimal 값을
-    Engineering 계산에 사용할 Decimal로 변환한다.
-
-    float도 str()을 거쳐 변환하여
-    불필요한 부동소수점 오차를 줄인다.
+    Engineering 계산용 Decimal로 변환한다.
     """
 
     if isinstance(value, Decimal):
@@ -30,13 +27,6 @@ def to_decimal(value: Any) -> Decimal:
 class VariableSpec:
     """
     하나의 Engineering Variable 정의.
-
-    예:
-        X
-        Y
-        Diameter
-        Temperature
-        Load_1
     """
 
     unit: str
@@ -54,10 +44,6 @@ class VariableSpec:
         cls,
         data: dict[str, Any],
     ) -> "VariableSpec":
-        """
-        기존 Prototype에서 사용하던
-        dictionary 형식을 VariableSpec으로 변환한다.
-        """
 
         return cls(
             unit=data["unit"],
@@ -84,10 +70,6 @@ class VariableSpec:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        기존 Prototype 형식과 호환되는
-        dictionary로 변환한다.
-        """
 
         return {
             "unit": self.unit,
@@ -108,22 +90,20 @@ class VariableSpec:
 
 
 # =========================================================
-# REQUIREMENT MODEL
+# GENERIC ENGINEERING CONSTRAINT
 # =========================================================
 
 @dataclass(frozen=True)
-class RequirementSpec:
+class ConstraintSpec:
     """
-    하나의 Engineering Requirement 정의.
+    Requirement와 Verification Constraint가
+    공통으로 사용하는 Constraint 구조.
 
-    현재 Prototype에서 지원하는 Type:
+    현재 지원:
 
     1. range
     2. difference_min
     3. sum_upper
-
-    Constraint Type마다 필요한 필드가 다르기 때문에
-    사용하지 않는 값은 None으로 둔다.
     """
 
     id: str
@@ -146,18 +126,13 @@ class RequirementSpec:
         default_factory=tuple
     )
 
-    # sum_upper limit
     limit: Decimal | None = None
 
     @classmethod
     def from_dict(
         cls,
         data: dict[str, Any],
-    ) -> "RequirementSpec":
-        """
-        기존 Requirement dictionary를
-        공통 RequirementSpec으로 변환한다.
-        """
+    ) -> "ConstraintSpec":
 
         minimum = data.get("min")
         maximum = data.get("max")
@@ -213,10 +188,6 @@ class RequirementSpec:
     def referenced_variables(
         self,
     ) -> tuple[str, ...]:
-        """
-        이 Requirement가 실제로 참조하는
-        Engineering Variable 이름을 반환한다.
-        """
 
         if self.type == "range":
 
@@ -250,10 +221,6 @@ class RequirementSpec:
         return tuple()
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        기존 Prototype 형식과 호환되는
-        dictionary로 변환한다.
-        """
 
         data = {
             "id": self.id,
@@ -320,18 +287,28 @@ class RequirementSpec:
         return data
 
 
+# 기존 Core 코드와 호환하기 위한 이름
+RequirementSpec = ConstraintSpec
+
+# Verification Plan에서도 같은 구조 사용
+VerificationConstraintSpec = ConstraintSpec
+
+
 # =========================================================
-# ENGINEERING CASE MODEL
+# ENGINEERING CASE
 # =========================================================
 
 @dataclass
 class EngineeringCase:
     """
-    Verification Stress Test의
-    전체 Engineering Case.
+    전체 Engineering Verification Case.
 
-    앞으로 Validator, Solver, Patch Engine이
-    모두 이 구조를 공통으로 사용한다.
+    requirements:
+        실제 설계 / 기술 요구사항
+
+    verification_constraints:
+        기본 Variable Verification Range 외에
+        Verification Plan에 추가되는 관계조건
     """
 
     name: str
@@ -342,18 +319,20 @@ class EngineeringCase:
     ]
 
     requirements: list[
-        RequirementSpec
+        ConstraintSpec
     ]
+
+    verification_constraints: list[
+        ConstraintSpec
+    ] = field(
+        default_factory=list
+    )
 
     @classmethod
     def from_dict(
         cls,
         data: dict[str, Any],
     ) -> "EngineeringCase":
-        """
-        기존 CASE dictionary를
-        EngineeringCase 객체로 변환한다.
-        """
 
         variables = {}
 
@@ -368,32 +347,38 @@ class EngineeringCase:
                 variable_data
             )
 
-        requirements = []
-
-        for requirement_data in data[
-            "requirements"
-        ]:
-
-            requirements.append(
-                RequirementSpec.from_dict(
-                    requirement_data
-                )
+        requirements = [
+            ConstraintSpec.from_dict(
+                requirement_data
             )
+            for requirement_data
+            in data["requirements"]
+        ]
+
+        verification_constraints = [
+            ConstraintSpec.from_dict(
+                constraint_data
+            )
+            for constraint_data
+            in data.get(
+                "verification_constraints",
+                [],
+            )
+        ]
 
         return cls(
             name=data["name"],
+
             variables=variables,
+
             requirements=requirements,
+
+            verification_constraints=(
+                verification_constraints
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        EngineeringCase를 기존 Prototype과
-        호환되는 dictionary로 변환한다.
-
-        Core Refactoring 중 기존 코드와
-        연결할 때 사용할 수 있다.
-        """
 
         return {
             "name": self.name,
@@ -411,25 +396,25 @@ class EngineeringCase:
                 for requirement
                 in self.requirements
             ],
+
+            "verification_constraints": [
+                constraint.to_dict()
+                for constraint
+                in self.verification_constraints
+            ],
         }
 
     def get_variable(
         self,
         name: str,
     ) -> VariableSpec:
-        """
-        변수 이름으로 VariableSpec을 가져온다.
-        """
 
         return self.variables[name]
 
     def get_requirement(
         self,
         requirement_id: str,
-    ) -> RequirementSpec:
-        """
-        Requirement ID로 Requirement를 찾는다.
-        """
+    ) -> ConstraintSpec:
 
         for requirement in self.requirements:
 

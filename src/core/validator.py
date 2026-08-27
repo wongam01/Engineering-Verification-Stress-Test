@@ -697,6 +697,21 @@ def validate_case(
         issues,
     )
 
+    # Verification Plan에 추가된 관계조건도
+    # 동일한 Engineering Constraint 규칙으로 검사한다.
+    if case.verification_constraints:
+
+        verification_case = EngineeringCase(
+            name=case.name,
+            variables=case.variables,
+            requirements=case.verification_constraints,
+        )
+
+        validate_requirements(
+            verification_case,
+            issues,
+        )
+
     return ValidationResult(
         valid=(len(issues) == 0),
         issues=issues,
