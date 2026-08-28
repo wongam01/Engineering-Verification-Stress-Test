@@ -200,7 +200,10 @@ class RequirementSpec:
                 self.variable,
             )
 
-        if self.type == "difference_min":
+        if self.type in {
+            "difference_min",
+            "abs_difference_max",
+        }:
 
             result = []
 
@@ -262,6 +265,20 @@ class RequirementSpec:
 
             data["min"] = (
                 self.min_value
+            )
+
+        elif self.type == "abs_difference_max":
+
+            data["left"] = (
+                self.left
+            )
+
+            data["right"] = (
+                self.right
+            )
+
+            data["limit"] = (
+                self.limit
             )
 
         elif self.type == "sum_upper":

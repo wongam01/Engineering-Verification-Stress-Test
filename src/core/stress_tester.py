@@ -432,6 +432,183 @@ def stress_test_difference(
 # SUM UPPER STRESS TEST
 # =========================================================
 
+
+# =========================================================
+
+# ABSOLUTE DIFFERENCE MAX STRESS TEST
+
+# =========================================================
+
+def stress_test_abs_difference_max(
+
+    case: EngineeringCase,
+
+    requirement: RequirementSpec,
+
+) -> StressTestResult:
+
+    """
+    Absolute Difference Requirement:
+
+        |left - right| <= limit
+
+    현재 Verification Plan을 PASS하면서
+    절대 차이가 limit을 얼마나 크게
+    초과할 수 있는지 탐색한다.
+    """
+
+    z3_variables = create_z3_variables(
+
+        case,
+
+        prefix=(
+            f"stress_{requirement.id}"
+        ),
+
+    )
+
+
+    optimizer = Optimize()
+
+
+    add_common_constraints(
+
+        optimizer,
+
+        case,
+
+        z3_variables,
+
+    )
+
+
+    requirement_expression = (
+
+        build_requirement_expression(
+
+            requirement,
+
+            z3_variables,
+
+        )
+
+    )
+
+
+    # Requirement를 위반하는 상태만 공격
+    optimizer.add(
+
+        requirement_expression.fail_condition
+
+    )
+
+
+    absolute_difference = (
+
+        requirement_expression.measured_expression
+
+    )
+
+
+    limit = z3_value(
+
+        requirement.limit
+
+    )
+
+
+    violation = (
+
+        absolute_difference
+
+        - limit
+
+    )
+
+
+    # 검사를 통과하면서
+    # Requirement 위반 정도를 최대화
+    optimizer.maximize(
+
+        violation
+
+    )
+
+
+    if optimizer.check() != sat:
+
+        return StressTestResult(
+
+            requirement_id=(
+                requirement.id
+            ),
+
+            requirement_type=(
+                requirement.type
+            ),
+
+            escape_found=False,
+
+        )
+
+
+    model = optimizer.model()
+
+
+    state = extract_state(
+
+        model,
+
+        z3_variables,
+
+    )
+
+
+    actual = abs(
+
+        state[requirement.left]
+
+        - state[requirement.right]
+
+    )
+
+
+    violation_value = (
+
+        actual
+
+        - float(requirement.limit)
+
+    )
+
+
+    return StressTestResult(
+
+        requirement_id=(
+            requirement.id
+        ),
+
+        requirement_type=(
+            requirement.type
+        ),
+
+        escape_found=True,
+
+        worst_violation=(
+            violation_value
+        ),
+
+        state=state,
+
+        actual_value=actual,
+
+        direction=(
+            "above_maximum"
+        ),
+
+    )
+
+
 def stress_test_sum_upper(
     case: EngineeringCase,
     requirement: RequirementSpec,
@@ -557,6 +734,22 @@ def stress_test_requirement(
             case,
             requirement,
         )
+
+    if (
+        requirement.type
+        == "abs_difference_max"
+    ):
+
+        return (
+            stress_test_abs_difference_max(
+
+                case,
+
+                requirement,
+
+            )
+        )
+
 
     if requirement.type == "sum_upper":
 

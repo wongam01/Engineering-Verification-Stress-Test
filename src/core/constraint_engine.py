@@ -5,6 +5,7 @@ from z3 import (
     And,
     ArithRef,
     BoolRef,
+    If,
     Or,
     Real,
     RealVal,
@@ -269,6 +270,78 @@ def build_difference_requirement(
 # SUM UPPER
 # =========================================================
 
+
+# =========================================================
+
+# ABSOLUTE DIFFERENCE MAX
+
+# |LEFT - RIGHT| <= LIMIT
+
+# =========================================================
+
+def build_abs_difference_max_requirement(
+
+    requirement: RequirementSpec,
+
+    z3_variables: Z3VariableSet,
+
+) -> RequirementExpression:
+
+    """
+    Absolute Difference Requirement:
+
+        |left - right| <= limit
+    """
+
+    left = z3_variables.get(
+        requirement.left
+    )
+
+    right = z3_variables.get(
+        requirement.right
+    )
+
+    difference = (
+        left - right
+    )
+
+    absolute_difference = If(
+        difference >= 0,
+        difference,
+        -difference,
+    )
+
+    limit = z3_value(
+        requirement.limit
+    )
+
+    return RequirementExpression(
+
+        requirement_id=requirement.id,
+
+        requirement_type=requirement.type,
+
+        pass_condition=(
+            absolute_difference <= limit
+        ),
+
+        fail_condition=(
+            absolute_difference > limit
+        ),
+
+        measured_expression=(
+            absolute_difference
+        ),
+
+        limit_value=(
+            requirement.limit
+        ),
+
+        violation_direction="upper",
+
+    )
+
+
 def build_sum_upper_requirement(
     requirement: RequirementSpec,
     z3_variables: Z3VariableSet,
@@ -361,6 +434,27 @@ def build_requirement_expression(
                 z3_variables,
             )
         )
+    if (
+
+        requirement.type
+
+        == "abs_difference_max"
+
+    ):
+
+        return (
+
+            build_abs_difference_max_requirement(
+
+                requirement,
+
+                z3_variables,
+
+            )
+
+        )
+
+
 
     if (
         requirement.type

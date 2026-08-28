@@ -43,6 +43,8 @@ SUPPORTED_TYPES = {
     "range",
     "difference_min",
     "sum_upper",
+
+    "abs_difference_max",
 }
 
 
@@ -353,6 +355,57 @@ def validate_constraint(
 
     # -----------------------------------------------------
     # SUM UPPER
+    # -----------------------------------------------------
+
+    elif (
+        constraint.type
+        == "abs_difference_max"
+    ):
+
+        if (
+            constraint.left is None
+            or
+            constraint.right is None
+        ):
+
+            issues.append(
+                ValidationIssue(
+                    location=location,
+                    message=(
+                        "abs_difference_max Constraint에 "
+                        "left/right 변수가 없습니다."
+                    ),
+                )
+            )
+
+        if constraint.limit is None:
+
+            issues.append(
+                ValidationIssue(
+                    location=location,
+                    message=(
+                        "abs_difference_max Constraint에 "
+                        "limit 값이 없습니다."
+                    ),
+                )
+            )
+
+        elif constraint.limit < 0:
+
+            issues.append(
+                ValidationIssue(
+                    location=location,
+                    message=(
+                        "abs_difference_max Constraint의 "
+                        "limit은 음수일 수 없습니다."
+                    ),
+                )
+            )
+
+    # -----------------------------------------------------
+
+    # SUM UPPER
+
     # -----------------------------------------------------
 
     elif constraint.type == "sum_upper":

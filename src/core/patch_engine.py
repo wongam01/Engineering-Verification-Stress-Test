@@ -135,6 +135,35 @@ def constraint_passes_state(
     # SUM UPPER
     # -----------------------------------------------------
 
+    # -----------------------------------------------------
+
+    # ABSOLUTE DIFFERENCE MAX
+
+    # |LEFT - RIGHT| <= LIMIT
+
+    # -----------------------------------------------------
+
+    if (
+        constraint.type
+        == "abs_difference_max"
+    ):
+
+        value = abs(
+
+            state[constraint.left]
+
+            - state[constraint.right]
+
+        )
+
+        return (
+
+            value
+            <= constraint.limit
+
+        )
+
+
     if constraint.type == "sum_upper":
 
         total = sum(
