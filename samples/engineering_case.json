@@ -1,0 +1,39 @@
+{
+  "name": "JSON Verification Example",
+
+  "variables": {
+    "A": {
+      "unit": "mm",
+      "nominal": "10.00",
+      "feasible_min": "9.50",
+      "feasible_max": "10.50",
+      "verification_min": "9.90",
+      "verification_max": "10.10"
+    },
+
+    "B": {
+      "unit": "mm",
+      "nominal": "20.00",
+      "feasible_min": "19.50",
+      "feasible_max": "20.50",
+      "verification_min": "19.90",
+      "verification_max": "20.10"
+    }
+  },
+
+  "requirements": [
+    {
+      "id": "R1",
+      "type": "sum_upper",
+      "variables": [
+        "A",
+        "B"
+      ],
+      "unit": "mm",
+      "limit": "30.05",
+      "description": "A와 B의 합은 30.05 mm 이하여야 한다."
+    }
+  ],
+
+  "verification_constraints": []
+}
