@@ -1,0 +1,96 @@
+{
+  "name": "Heating Skid Verification Case",
+
+  "variables": {
+    "T_in": {
+      "unit": "degC",
+      "nominal": "80.0",
+      "feasible_min": "75.0",
+      "feasible_max": "85.0",
+      "verification_min": "75.0",
+      "verification_max": "85.0"
+    },
+
+    "T_out": {
+      "unit": "degC",
+      "nominal": "100.0",
+      "feasible_min": "95.0",
+      "feasible_max": "105.0",
+      "verification_min": "95.0",
+      "verification_max": "105.0"
+    },
+
+    "P_out": {
+      "unit": "bar",
+      "nominal": "4.5",
+      "feasible_min": "4.0",
+      "feasible_max": "5.2",
+      "verification_min": "4.0",
+      "verification_max": "4.71"
+    },
+
+    "Flow_A": {
+      "unit": "L/min",
+      "nominal": "10.0",
+      "feasible_min": "8.0",
+      "feasible_max": "12.0",
+      "verification_min": "8.0",
+      "verification_max": "11.3"
+    },
+
+    "Flow_B": {
+      "unit": "L/min",
+      "nominal": "10.0",
+      "feasible_min": "8.0",
+      "feasible_max": "12.0",
+      "verification_min": "8.0",
+      "verification_max": "12.0"
+    }
+  },
+
+  "requirements": [
+    {
+      "id": "R1",
+      "type": "range",
+      "variable": "T_out",
+      "unit": "degC",
+      "min": "95.0",
+      "max": "105.0",
+      "description": "출구 온도는 95~105 °C 범위여야 한다."
+    },
+
+    {
+      "id": "R2",
+      "type": "difference_min",
+      "left": "T_out",
+      "right": "T_in",
+      "unit": "degC",
+      "min": "20.0",
+      "description": "출구 온도는 입구 온도보다 최소 20 °C 높아야 한다."
+    },
+
+    {
+      "id": "R3",
+      "type": "range",
+      "variable": "P_out",
+      "unit": "bar",
+      "min": "4.0",
+      "max": "4.8",
+      "description": "출구 압력은 4.0~4.8 bar 범위여야 한다."
+    },
+
+    {
+      "id": "R4",
+      "type": "sum_upper",
+      "variables": [
+        "Flow_A",
+        "Flow_B"
+      ],
+      "unit": "L/min",
+      "limit": "21.0",
+      "description": "Flow_A와 Flow_B의 합은 21 L/min 이하여야 한다."
+    }
+  ],
+
+  "verification_constraints": []
+}
