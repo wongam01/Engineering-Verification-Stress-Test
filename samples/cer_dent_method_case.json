@@ -1,0 +1,50 @@
+{
+  "case_id": "CER_DENT_A3",
+  "case_name": "Pipeline Dent Fatigue Verification Method Cross-Check",
+
+  "source": {
+    "context": "CER Safety Advisory SA 2025-01",
+    "engineering_benchmark": "SRNL-STI-2023-00088",
+    "note": "CER 2025 identifies non-conservative dent fatigue screening concerns. Numerical benchmark values are taken from the referenced public engineering study."
+  },
+
+  "engineering_context": {
+    "pipe_od_in": "30",
+    "wall_thickness_in": "0.25",
+    "od_t_ratio": "120",
+    "material": "X52",
+    "smys_ksi": "52",
+    "annual_ssi": "100"
+  },
+
+  "requirement": {
+    "metric": "fatigue_life",
+    "operator": ">=",
+    "target": "150",
+    "unit": "years"
+  },
+
+  "method_results": [
+    {
+      "method": "INGAA_Table_6",
+      "role": "current_verification",
+      "result_type": "lower_bound",
+      "value": "308",
+      "unit": "years"
+    },
+    {
+      "method": "Kmax",
+      "role": "cross_check",
+      "result_type": "value",
+      "value": "130",
+      "unit": "years"
+    },
+    {
+      "method": "Kmax_OPS",
+      "role": "cross_check",
+      "result_type": "value",
+      "value": "214",
+      "unit": "years"
+    }
+  ]
+}
