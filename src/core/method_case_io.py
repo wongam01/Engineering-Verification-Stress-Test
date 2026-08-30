@@ -62,7 +62,7 @@ class MethodCaseData:
     case_id: str | None = None
     case_name: str | None = None
     title: str | None = None
-    source: str | None = None
+    source: dict[str, Any] | None = None
 
 
 # =========================================================

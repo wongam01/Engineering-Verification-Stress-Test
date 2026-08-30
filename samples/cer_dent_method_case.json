@@ -1,13 +1,34 @@
 {
   "case_id": "CER_DENT_A3",
   "case_name": "Pipeline Dent Fatigue Verification Method Cross-Check",
-
   "source": {
     "context": "CER Safety Advisory SA 2025-01",
     "engineering_benchmark": "SRNL-STI-2023-00088",
-    "note": "CER 2025 identifies non-conservative dent fatigue screening concerns. Numerical benchmark values are taken from the referenced public engineering study."
+    "regulatory_context": {
+      "organization": "Canada Energy Regulator",
+      "document": "Safety Advisory SA 2025-01 - Evaluation of Dents in Pipe",
+      "date": "2025-06-19",
+      "issue": "Potentially overestimated fatigue life predictions and non-conservatism associated with API RP 1183 First Edition Table 6."
+    },
+    "cer_referenced_research": {
+      "author": "X. K. Zhu",
+      "title": "A verification study of fatigue-based methods in API RP 1183 for estimating fatigue life of pipeline dents",
+      "journal": "International Journal of Pressure Vessels and Piping",
+      "volume": "205",
+      "year": 2023,
+      "article_number": "104969"
+    },
+    "benchmark_source": {
+      "organization": "Savannah River National Laboratory",
+      "document_id": "SRNL-STI-2023-00088",
+      "title": "Comparison of Fatigue Models in API 1183 for Predicting Fatigue Life of Pipeline Dents",
+      "author": "Xian-Kui Zhu",
+      "conference": "ASME PVP2023",
+      "paper_id": "PVP2023-102043",
+      "section": "3.2 Sample Calculation in Annex A.3"
+    },
+    "note": "CER SA 2025-01 provides the regulatory context and identifies non-conservatism concerns with API RP 1183 Table 6. The numerical benchmark values used in this case are taken from the public SRNL engineering paper SRNL-STI-2023-00088, Section 3.2. The CER advisory itself is not the source of the 150, >308, 130, and 214 year values."
   },
-
   "engineering_context": {
     "pipe_od_in": "30",
     "wall_thickness_in": "0.25",
@@ -16,14 +37,12 @@
     "smys_ksi": "52",
     "annual_ssi": "100"
   },
-
   "requirement": {
     "metric": "fatigue_life",
     "operator": ">=",
     "target": "150",
     "unit": "years"
   },
-
   "method_results": [
     {
       "method": "INGAA_Table_6",

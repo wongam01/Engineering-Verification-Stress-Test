@@ -78,6 +78,68 @@ class TestMethodCaseIO(unittest.TestCase):
             "Pipeline Dent Fatigue Verification Method Cross-Check",
         )
 
+        self.assertIsInstance(
+            method_case.source,
+            dict,
+        )
+
+        self.assertEqual(
+            method_case.source["context"],
+            "CER Safety Advisory SA 2025-01",
+        )
+
+        self.assertEqual(
+            method_case.source["engineering_benchmark"],
+            "SRNL-STI-2023-00088",
+        )
+
+        self.assertIn(
+            "note",
+            method_case.source,
+        )
+
+        self.assertEqual(
+            method_case.source[
+                "regulatory_context"
+            ]["organization"],
+            "Canada Energy Regulator",
+        )
+
+        self.assertEqual(
+            method_case.source[
+                "regulatory_context"
+            ]["document"],
+            "Safety Advisory SA 2025-01 - Evaluation of Dents in Pipe",
+        )
+
+        self.assertEqual(
+            method_case.source[
+                "regulatory_context"
+            ]["date"],
+            "2025-06-19",
+        )
+
+        self.assertEqual(
+            method_case.source[
+                "benchmark_source"
+            ]["document_id"],
+            "SRNL-STI-2023-00088",
+        )
+
+        self.assertEqual(
+            method_case.source[
+                "benchmark_source"
+            ]["section"],
+            "3.2 Sample Calculation in Annex A.3",
+        )
+
+        self.assertEqual(
+            method_case.source[
+                "cer_referenced_research"
+            ]["article_number"],
+            "104969",
+        )
+
         self.assertEqual(
             method_case.requirement.metric,
             "fatigue_life",
