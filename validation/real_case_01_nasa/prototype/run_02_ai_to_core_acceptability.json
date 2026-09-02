@@ -1,0 +1,426 @@
+{
+  "metadata": {
+    "stage": "RUN_02_DETERMINISTIC_AI_TO_CORE_ACCEPTABILITY",
+    "created_at_utc": "2026-09-01T13:37:28.336039+00:00",
+    "run_02_file": "validation/real_case_01_nasa/prototype/blind_ai_extract_run_02.json",
+    "run_02_sha256": "0bac052cc34299b623e361ba8810632da2998b8396f10c21224ab18fbba57932",
+    "target_ids": [
+      "NCPR 18",
+      "NCPR 19",
+      "NCPR 20",
+      "NCPR 21",
+      "NCPR 22",
+      "NCPR 23",
+      "NCPR 24",
+      "NCPR 25",
+      "NCPR 26",
+      "NCPR 27",
+      "NCPR 28",
+      "NCPR 29"
+    ],
+    "ai_api_called": false,
+    "frozen_reference_used": false,
+    "solver_executed": false,
+    "check_scope": "Deterministic AI extraction structure and AI-to-Core adapter acceptability only."
+  },
+  "summary": {
+    "target_requirement_count": 12,
+    "found_requirement_count": 12,
+    "missing_requirement_ids": [],
+    "target_constraint_count": 14,
+    "structure_valid_count": 9,
+    "structure_invalid_count": 5,
+    "core_accepted_count": 1,
+    "core_rejected_count": 13,
+    "accepted_constraints_by_id": {
+      "NCPR 27": 1
+    }
+  },
+  "evaluations": [
+    {
+      "index": 1,
+      "constraint_id": "NCPR 18",
+      "source_line_id": "L4",
+      "declared_type": "lower_bound",
+      "needs_review": false,
+      "review_reason": null,
+      "input_fields": {
+        "unit": null,
+        "variable": "pneumatic proof pressure",
+        "min": "1.5xMEOP",
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": false,
+        "message": "lower_bound Constraint의 min 값이 숫자가 아닙니다: 1.5xMEOP"
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI Constraint 구조 검증 실패: lower_bound Constraint의 min 값이 숫자가 아닙니다: 1.5xMEOP",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 2,
+      "constraint_id": "NCPR 19",
+      "source_line_id": "L5",
+      "declared_type": "lower_bound",
+      "needs_review": false,
+      "review_reason": null,
+      "input_fields": {
+        "unit": null,
+        "variable": "helium leak test pressure",
+        "min": "1.0xMEOP",
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": false,
+        "message": "lower_bound Constraint의 min 값이 숫자가 아닙니다: 1.0xMEOP"
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI Constraint 구조 검증 실패: lower_bound Constraint의 min 값이 숫자가 아닙니다: 1.0xMEOP",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 3,
+      "constraint_id": "NCPR 19",
+      "source_line_id": "L5",
+      "declared_type": "upper_bound",
+      "needs_review": true,
+      "review_reason": "The source uses a strict 'less than' inequality, while upper_bound represents a non-strict maximum.",
+      "input_fields": {
+        "unit": "standard cc/sec",
+        "variable": "resulting leak rate",
+        "min": null,
+        "max": "1x10-6",
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": false,
+        "message": "upper_bound Constraint의 max 값이 숫자가 아닙니다: 1x10-6"
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: The source uses a strict 'less than' inequality, while upper_bound represents a non-strict maximum.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 4,
+      "constraint_id": "NCPR 20",
+      "source_line_id": "L6",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Required test coverage for specified valve parts is not representable by a supported constraint type.",
+      "input_fields": {
+        "unit": null,
+        "variable": null,
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Required test coverage for specified valve parts is not representable by a supported constraint type.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 5,
+      "constraint_id": "NCPR 21",
+      "source_line_id": "L7",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Leak-testing and referenced-standard compliance requirements are not represented by a supported constraint type.",
+      "input_fields": {
+        "unit": null,
+        "variable": null,
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Leak-testing and referenced-standard compliance requirements are not represented by a supported constraint type.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 6,
+      "constraint_id": "NCPR 22",
+      "source_line_id": "L8",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Alternative non-destructive testing or process-control requirement is not representable by a supported constraint type.",
+      "input_fields": {
+        "unit": null,
+        "variable": null,
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Alternative non-destructive testing or process-control requirement is not representable by a supported constraint type.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 7,
+      "constraint_id": "NCPR 23",
+      "source_line_id": "L9",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Conditional approval requirement is not representable by a supported constraint type.",
+      "input_fields": {
+        "unit": null,
+        "variable": null,
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Conditional approval requirement is not representable by a supported constraint type.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 8,
+      "constraint_id": "NCPR 24",
+      "source_line_id": "L10",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Non-credible crack-growth demonstration requirement is qualitative and unsupported.",
+      "input_fields": {
+        "unit": null,
+        "variable": null,
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Non-credible crack-growth demonstration requirement is qualitative and unsupported.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 9,
+      "constraint_id": "NCPR 25",
+      "source_line_id": "L11",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Survival for four times design operational life is a life-multiplier relationship not supported by the available constraint types.",
+      "input_fields": {
+        "unit": null,
+        "variable": null,
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Survival for four times design operational life is a life-multiplier relationship not supported by the available constraint types.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 10,
+      "constraint_id": "NCPR 26",
+      "source_line_id": "L12",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Proof testing at an exact 1.5xMEOP condition, applied to specified locations, is not expressible as a supported bound without changing its meaning.",
+      "input_fields": {
+        "unit": null,
+        "variable": null,
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Proof testing at an exact 1.5xMEOP condition, applied to specified locations, is not expressible as a supported bound without changing its meaning.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 11,
+      "constraint_id": "NCPR 27",
+      "source_line_id": "L13",
+      "declared_type": "lower_bound",
+      "needs_review": false,
+      "review_reason": null,
+      "input_fields": {
+        "unit": "min",
+        "variable": "hold time for each burst pressure test",
+        "min": "5",
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": true,
+        "message": "AI Constraint가 Core 형식으로 변환되었습니다.",
+        "core_constraint": {
+          "id": "NCPR 27",
+          "type": "lower_bound",
+          "unit": "min",
+          "description": "a. [NCPR 27] The minimum hold time for each burst pressure test shall be 5 min.",
+          "variable": "hold time for each burst pressure test",
+          "min": "5"
+        }
+      }
+    },
+    {
+      "index": 12,
+      "constraint_id": "NCPR 28",
+      "source_line_id": "L14",
+      "declared_type": "lower_bound",
+      "needs_review": true,
+      "review_reason": "The lower bound is conditional on a line-diameter threshold, which cannot be structurally represented by the supported types.",
+      "input_fields": {
+        "unit": null,
+        "variable": "minimum design burst pressure for lines with diameters ≥3.8 cm (≥1.5 in)",
+        "min": "2.5xMEOP",
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": false,
+        "message": "lower_bound Constraint의 min 값이 숫자가 아닙니다: 2.5xMEOP"
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: The lower bound is conditional on a line-diameter threshold, which cannot be structurally represented by the supported types.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 13,
+      "constraint_id": "NCPR 28",
+      "source_line_id": "L14",
+      "declared_type": "lower_bound",
+      "needs_review": true,
+      "review_reason": "The lower bound is conditional on a line-diameter threshold, which cannot be structurally represented by the supported types.",
+      "input_fields": {
+        "unit": null,
+        "variable": "minimum design burst pressure for lines with diameters <3.8 cm (<1.5 in)",
+        "min": "4.0xMEOP",
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": false,
+        "message": "lower_bound Constraint의 min 값이 숫자가 아닙니다: 4.0xMEOP"
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: The lower bound is conditional on a line-diameter threshold, which cannot be structurally represented by the supported types.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 14,
+      "constraint_id": "NCPR 29",
+      "source_line_id": "L15",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Lot-sampling requirement ('at least one' valve from each lot) is not representable by a supported constraint type.",
+      "input_fields": {
+        "unit": null,
+        "variable": null,
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Lot-sampling requirement ('at least one' valve from each lot) is not representable by a supported constraint type.",
+        "core_constraint": null
+      }
+    }
+  ]
+}

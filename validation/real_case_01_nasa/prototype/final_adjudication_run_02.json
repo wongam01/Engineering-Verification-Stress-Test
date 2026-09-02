@@ -1,0 +1,407 @@
+{
+  "metadata": {
+    "stage": "NASA_REAL_DOCUMENT_BENCHMARK_RUN_02_FINAL_ADJUDICATION",
+    "created_at_utc": "2026-09-01T13:40:12.833238+00:00",
+    "target_ids": [
+      "NCPR 18",
+      "NCPR 19",
+      "NCPR 20",
+      "NCPR 21",
+      "NCPR 22",
+      "NCPR 23",
+      "NCPR 24",
+      "NCPR 25",
+      "NCPR 26",
+      "NCPR 27",
+      "NCPR 28",
+      "NCPR 29"
+    ],
+    "frozen_reference_alignment_file": "validation/real_case_01_nasa/prototype/run_02_vs_frozen_reference_snapshot.json",
+    "frozen_reference_alignment_sha256": "5fcfec04eeddaf176a5d751f15f80adf91627c48eae5bf63c17f03f14fd7867d",
+    "deterministic_acceptability_file": "validation/real_case_01_nasa/prototype/run_02_ai_to_core_acceptability.json",
+    "deterministic_acceptability_sha256": "b06331c5b6a1716940b8ffb351b352d493965f5e20dd175322fdab132e96b9e0",
+    "automatic_semantic_pass_fail_used": false,
+    "judgments_are_evaluator_labels": true,
+    "prototype_output_modified": false,
+    "ai_api_called_for_adjudication": false,
+    "solver_executed_for_adjudication": false
+  },
+  "summary": {
+    "target_requirement_count": 12,
+    "overall_status_counts": {
+      "ATTRIBUTION_ISSUE": 1,
+      "CLASSIFICATION_MISS_SAFE_REJECT": 1,
+      "CORRECT_CORE_READY": 1,
+      "PARTIAL": 1,
+      "PARTIAL_REVIEW_REQUIRED": 1,
+      "SAFE_UNSUPPORTED": 4,
+      "SAFE_UNSUPPORTED_COMPLEX_CONDITIONAL": 1,
+      "SAFE_UNSUPPORTED_EXTERNAL_ANALYSIS": 1,
+      "SAFE_UNSUPPORTED_SCHEMA_GAP": 1
+    },
+    "benchmark_conclusion": "PARTIAL_SUCCESS_WITH_IDENTIFIED_GENERALIZATION_AND_SCHEMA_LIMITATIONS",
+    "interpretation": "Run #2 demonstrated improved recognition of one-sided bounds and safe rejection of unsupported semantics, but also exposed numeric/unit canonicalization, source attribution, conditional representation, and sampling-classification limitations."
+  },
+  "adjudications": [
+    {
+      "requirement_id": "NCPR 18",
+      "evidence": {
+        "reference_categories": [
+          "numeric_threshold",
+          "multiplier_relationship",
+          "coverage",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "For every valve: pneumatic proof-test pressure >= 1.5 × MEOP."
+        ],
+        "prototype_types": [
+          "lower_bound"
+        ],
+        "prototype_needs_review": [
+          false
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 0,
+        "core_rejected_count": 1
+      },
+      "judgment": {
+        "overall": "PARTIAL",
+        "semantic_extraction": "PARTIAL_SUCCESS",
+        "core_readiness": "REJECTED",
+        "fail_safe": "PASS",
+        "reason": "Minimum proof-pressure meaning and lower-bound type were identified, but numeric and unit semantics were not canonically separated: min contained '1.5xMEOP'."
+      }
+    },
+    {
+      "requirement_id": "NCPR 19",
+      "evidence": {
+        "reference_categories": [
+          "coverage",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "For every unit during assembly: apply pressure individually to each line.",
+          "For every unit during assembly: separately apply pressure to the valve housing through the actuation ram chamber while the lines are vented."
+        ],
+        "prototype_types": [
+          "lower_bound",
+          "upper_bound"
+        ],
+        "prototype_needs_review": [
+          false,
+          true
+        ],
+        "deterministic_constraint_count": 2,
+        "core_accepted_count": 0,
+        "core_rejected_count": 2
+      },
+      "judgment": {
+        "overall": "ATTRIBUTION_ISSUE",
+        "semantic_extraction": "MISATTRIBUTED",
+        "core_readiness": "REJECTED",
+        "fail_safe": "PARTIAL",
+        "reason": "Prototype extracted numeric helium-leak constraints from an unnumbered normative paragraph attached to the NCPR 19 block rather than representing the numbered NCPR 19 coverage/procedural requirement."
+      }
+    },
+    {
+      "requirement_id": "NCPR 20",
+      "evidence": {
+        "reference_categories": [
+          "coverage",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "Test all parent-metal shear-sections.",
+          "Test all valve parts exposed to pressure after valve actuation."
+        ],
+        "prototype_types": [
+          "unsupported"
+        ],
+        "prototype_needs_review": [
+          true
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 0,
+        "core_rejected_count": 1
+      },
+      "judgment": {
+        "overall": "SAFE_UNSUPPORTED",
+        "semantic_extraction": "SCOPE_RECOGNIZED",
+        "core_readiness": "REJECTED_BY_DESIGN",
+        "fail_safe": "PASS",
+        "reason": "Coverage/procedural requirement is outside the currently supported mathematical constraint types and was routed to review."
+      }
+    },
+    {
+      "requirement_id": "NCPR 21",
+      "evidence": {
+        "reference_categories": [
+          "coverage",
+          "logical_or",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "For all welds: leak testing shall occur during assembly OR acceptance testing."
+        ],
+        "prototype_types": [
+          "unsupported"
+        ],
+        "prototype_needs_review": [
+          true
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 0,
+        "core_rejected_count": 1
+      },
+      "judgment": {
+        "overall": "SAFE_UNSUPPORTED",
+        "semantic_extraction": "SCOPE_RECOGNIZED",
+        "core_readiness": "REJECTED_BY_DESIGN",
+        "fail_safe": "PASS",
+        "reason": "Coverage plus logical-OR procedural semantics were not forced into an unsupported numeric constraint."
+      }
+    },
+    {
+      "requirement_id": "NCPR 22",
+      "evidence": {
+        "reference_categories": [
+          "logical_or",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "Perform non-destructive acceptance testing OR mitigate defect risk through process control."
+        ],
+        "prototype_types": [
+          "unsupported"
+        ],
+        "prototype_needs_review": [
+          true
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 0,
+        "core_rejected_count": 1
+      },
+      "judgment": {
+        "overall": "SAFE_UNSUPPORTED",
+        "semantic_extraction": "SCOPE_RECOGNIZED",
+        "core_readiness": "REJECTED_BY_DESIGN",
+        "fail_safe": "PASS",
+        "reason": "Alternative NDT/process-control requirement was safely routed to review."
+      }
+    },
+    {
+      "requirement_id": "NCPR 23",
+      "evidence": {
+        "reference_categories": [
+          "conditional",
+          "approval_governance",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "IF process control is used AND programmatic requirements require this approval for the spacecraft, THEN obtain NASA Fracture Control Board approval."
+        ],
+        "prototype_types": [
+          "unsupported"
+        ],
+        "prototype_needs_review": [
+          true
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 0,
+        "core_rejected_count": 1
+      },
+      "judgment": {
+        "overall": "SAFE_UNSUPPORTED",
+        "semantic_extraction": "SCOPE_RECOGNIZED",
+        "core_readiness": "REJECTED_BY_DESIGN",
+        "fail_safe": "PASS",
+        "reason": "Conditional approval/governance requirement was not approximated as a supported numeric constraint."
+      }
+    },
+    {
+      "requirement_id": "NCPR 24",
+      "evidence": {
+        "reference_categories": [
+          "conditional",
+          "approval_governance",
+          "external_analysis",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "IF fracture-mechanics and crack-growth analysis are used to verify NASA-STD-5019 compliance, THEN demonstrate to the fracture control authority that growth of the maximum credible crack size is non-credible.",
+          "Base the demonstration on knowledge of quality-control and manufacturing techniques used to make the valve."
+        ],
+        "prototype_types": [
+          "unsupported"
+        ],
+        "prototype_needs_review": [
+          true
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 0,
+        "core_rejected_count": 1
+      },
+      "judgment": {
+        "overall": "SAFE_UNSUPPORTED_EXTERNAL_ANALYSIS",
+        "semantic_extraction": "SCOPE_RECOGNIZED",
+        "core_readiness": "REJECTED_BY_DESIGN",
+        "fail_safe": "PASS",
+        "reason": "Fracture-mechanics/crack-growth requirement requires external analysis and was safely kept outside the deterministic constraint scope."
+      }
+    },
+    {
+      "requirement_id": "NCPR 25",
+      "evidence": {
+        "reference_categories": [
+          "numeric_threshold",
+          "multiplier_relationship"
+        ],
+        "reference_normalized_constraints": [
+          "Valve survival capability >= 4 × design operational life."
+        ],
+        "prototype_types": [
+          "unsupported"
+        ],
+        "prototype_needs_review": [
+          true
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 0,
+        "core_rejected_count": 1
+      },
+      "judgment": {
+        "overall": "SAFE_UNSUPPORTED_SCHEMA_GAP",
+        "semantic_extraction": "PARTIAL_SUCCESS",
+        "core_readiness": "REJECTED_BY_DESIGN",
+        "fail_safe": "PASS",
+        "reason": "The four-times operational-life relationship contains a numeric multiplier, but that relationship is not represented by the current constraint schema."
+      }
+    },
+    {
+      "requirement_id": "NCPR 26",
+      "evidence": {
+        "reference_categories": [
+          "numeric_threshold",
+          "multiplier_relationship",
+          "coverage",
+          "conditional",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "IF the valve design provides two separate and independent parent-metal barriers before actuation, THEN apply proof pressure >= 1.5 × MEOP independently to each parent-metal shear-section.",
+          "Then apply the proof test externally to the shear-section when welded in the housing.",
+          "During LAT: no evidence of permanent deformation AND no leakage."
+        ],
+        "prototype_types": [
+          "unsupported"
+        ],
+        "prototype_needs_review": [
+          true
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 0,
+        "core_rejected_count": 1
+      },
+      "judgment": {
+        "overall": "SAFE_UNSUPPORTED_COMPLEX_CONDITIONAL",
+        "semantic_extraction": "PARTIAL_SUCCESS",
+        "core_readiness": "REJECTED_BY_DESIGN",
+        "fail_safe": "PASS",
+        "reason": "Requirement combines conditional applicability, location-specific proof testing, coverage, and no-deformation/no-leakage semantics. Prototype safely routed the compound requirement to review."
+      }
+    },
+    {
+      "requirement_id": "NCPR 27",
+      "evidence": {
+        "reference_categories": [
+          "numeric_threshold",
+          "coverage",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "For each burst-pressure test: hold time >= 5 min."
+        ],
+        "prototype_types": [
+          "lower_bound"
+        ],
+        "prototype_needs_review": [
+          false
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 1,
+        "core_rejected_count": 0
+      },
+      "judgment": {
+        "overall": "CORRECT_CORE_READY",
+        "semantic_extraction": "CORRECT",
+        "core_readiness": "ACCEPTED",
+        "fail_safe": "NOT_NEEDED",
+        "reason": "Hold-time lower bound was extracted as lower_bound with min=5 and unit=min and was accepted by the deterministic AI-to-Core adapter."
+      }
+    },
+    {
+      "requirement_id": "NCPR 28",
+      "evidence": {
+        "reference_categories": [
+          "numeric_threshold",
+          "multiplier_relationship",
+          "conditional",
+          "coverage"
+        ],
+        "reference_normalized_constraints": [
+          "IF line diameter >= 3.8 cm (>= 1.5 in), THEN minimum design burst pressure >= 2.5 × MEOP.",
+          "IF line diameter < 3.8 cm (< 1.5 in), THEN minimum design burst pressure >= 4.0 × MEOP."
+        ],
+        "prototype_types": [
+          "lower_bound",
+          "lower_bound"
+        ],
+        "prototype_needs_review": [
+          true,
+          true
+        ],
+        "deterministic_constraint_count": 2,
+        "core_accepted_count": 0,
+        "core_rejected_count": 2
+      },
+      "judgment": {
+        "overall": "PARTIAL_REVIEW_REQUIRED",
+        "semantic_extraction": "PARTIAL_SUCCESS",
+        "core_readiness": "REJECTED",
+        "fail_safe": "PASS",
+        "reason": "Both 2.5xMEOP and 4.0xMEOP branches were identified as lower bounds, but conditional branch semantics are not structurally supported and multiplier values were not canonically separated from units."
+      }
+    },
+    {
+      "requirement_id": "NCPR 29",
+      "evidence": {
+        "reference_categories": [
+          "numeric_threshold",
+          "sampling",
+          "coverage",
+          "procedural"
+        ],
+        "reference_normalized_constraints": [
+          "For each valve lot: number of NC parent-metal valves demonstrating the applicable burst-pressure capability >= 1."
+        ],
+        "prototype_types": [
+          "unsupported"
+        ],
+        "prototype_needs_review": [
+          true
+        ],
+        "deterministic_constraint_count": 1,
+        "core_accepted_count": 0,
+        "core_rejected_count": 1
+      },
+      "judgment": {
+        "overall": "CLASSIFICATION_MISS_SAFE_REJECT",
+        "semantic_extraction": "MISSED_SUPPORTED_NUMERIC_PATTERN",
+        "core_readiness": "REJECTED_BY_DESIGN",
+        "fail_safe": "PASS",
+        "reason": "Reference contains an explicit per-lot count threshold >= 1, but Prototype classified the sampling requirement as unsupported. The miss was safely routed to review rather than forced into the Core."
+      }
+    }
+  ]
+}

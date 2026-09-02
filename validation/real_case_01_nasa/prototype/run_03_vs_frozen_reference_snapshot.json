@@ -1,0 +1,532 @@
+{
+  "metadata": {
+    "stage": "RUN_03_VS_FROZEN_REFERENCE_ALIGNMENT_SNAPSHOT",
+    "created_at_utc": "2026-09-02T15:49:30.325833+00:00",
+    "run_03_file": "validation/real_case_01_nasa/prototype/blind_ai_extract_run_03.json",
+    "run_03_sha256": "ac585b2c33beca0b8b2c3f208c1d1485cde765cd29d773001840417ec961a0b7",
+    "frozen_reference_file": "validation/real_case_01_nasa/reference/reference_v1.json",
+    "frozen_reference_sha256": "ae9ced515a73a0a35a8887f0ff815928f602388ad1c49e3da083c6a46b09f4ba",
+    "reference_id": "NASA-SPEC-5022-NCPR18-29-v1",
+    "reference_status": "FROZEN_REFERENCE_V1",
+    "target_ids": [
+      "NCPR 18",
+      "NCPR 19",
+      "NCPR 20",
+      "NCPR 21",
+      "NCPR 22",
+      "NCPR 23",
+      "NCPR 24",
+      "NCPR 25",
+      "NCPR 26",
+      "NCPR 27",
+      "NCPR 28",
+      "NCPR 29"
+    ],
+    "semantic_correctness_judged": false,
+    "automatic_pass_fail_used": false
+  },
+  "completeness": {
+    "target_requirement_count": 12,
+    "reference_found_count": 12,
+    "prototype_found_count": 6,
+    "missing_reference_ids": [],
+    "missing_prototype_ids": [
+      "NCPR 20",
+      "NCPR 21",
+      "NCPR 22",
+      "NCPR 23",
+      "NCPR 24",
+      "NCPR 29"
+    ]
+  },
+  "alignments": [
+    {
+      "requirement_id": "NCPR 18",
+      "frozen_reference": {
+        "source_location": "Section 4.3.1(a), page 15",
+        "source_excerpt": "All valves shall be proof tested to a minimum pneumatic proof pressure at 1.5xMEOP.",
+        "engineering_meaning": "Every valve shall undergo pneumatic proof testing at a pressure of at least 1.5 times MEOP.",
+        "semantic_categories": [
+          "numeric_threshold",
+          "multiplier_relationship",
+          "coverage",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "For every valve: pneumatic proof-test pressure >= 1.5 × MEOP."
+        ],
+        "coverage_or_condition": "Applies to all valves.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 1,
+        "types": [
+          "unsupported"
+        ],
+        "needs_review": [
+          true
+        ],
+        "constraints": [
+          {
+            "source_line_id": "L7",
+            "constraint_id": "NCPR 18",
+            "type": "unsupported",
+            "unit": null,
+            "variable": "pneumatic proof pressure",
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Minimum proof pressure is specified as 1.5xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+            "source_text": "a. [NCPR 18] All valves shall be proof tested to a minimum pneumatic proof pressure at\n1.5xMEOP."
+          }
+        ]
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 19",
+      "frozen_reference": {
+        "source_location": "Section 4.3.1(b), page 15",
+        "source_excerpt": "demonstrated on every unit during assembly, with pressure applied individually to each line",
+        "engineering_meaning": "The proof-pressure capability shall be demonstrated on every unit during assembly by separately pressurizing each line and the valve housing through the actuation ram chamber while lines are vented.",
+        "semantic_categories": [
+          "coverage",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "For every unit during assembly: apply pressure individually to each line.",
+          "For every unit during assembly: separately apply pressure to the valve housing through the actuation ram chamber while the lines are vented."
+        ],
+        "coverage_or_condition": "Applies to every unit during assembly.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 2,
+        "types": [
+          "unsupported",
+          "upper_bound"
+        ],
+        "needs_review": [
+          true,
+          false
+        ],
+        "constraints": [
+          {
+            "source_line_id": "L9",
+            "constraint_id": "NCPR 19",
+            "type": "unsupported",
+            "unit": null,
+            "variable": "helium leak test pressure",
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Minimum leak-test pressure is specified as 1.0xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+            "source_text": "Included as part of and after every proof pressure test is a helium leak test at a minimum of\n1.0xMEOP with a resulting leak rate less than 1x10-6 standard cc/sec."
+          },
+          {
+            "source_line_id": "L9",
+            "constraint_id": "NCPR 19",
+            "type": "upper_bound",
+            "unit": "standard cc/sec",
+            "variable": "resulting leak rate",
+            "min": null,
+            "max": "1e-6",
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": false,
+            "review_reason": null,
+            "source_text": "Included as part of and after every proof pressure test is a helium leak test at a minimum of\n1.0xMEOP with a resulting leak rate less than 1x10-6 standard cc/sec."
+          }
+        ]
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 20",
+      "frozen_reference": {
+        "source_location": "Section 4.3.1(c), page 15",
+        "source_excerpt": "The test shall be performed on all parent metal shear-section and all parts of the valve",
+        "engineering_meaning": "The test shall cover every parent-metal shear-section and every valve part exposed to pressure after valve actuation.",
+        "semantic_categories": [
+          "coverage",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "Test all parent-metal shear-sections.",
+          "Test all valve parts exposed to pressure after valve actuation."
+        ],
+        "coverage_or_condition": "Covers all parent-metal shear-sections and all valve parts exposed to pressure after actuation.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 0,
+        "types": [],
+        "needs_review": [],
+        "constraints": []
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 21",
+      "frozen_reference": {
+        "source_location": "Section 4.3.1(d), page 15",
+        "source_excerpt": "All welds shall be leak tested either during assembly or acceptance testing.",
+        "engineering_meaning": "Every weld shall be leak tested either during assembly or during acceptance testing.",
+        "semantic_categories": [
+          "coverage",
+          "logical_or",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "For all welds: leak testing shall occur during assembly OR acceptance testing."
+        ],
+        "coverage_or_condition": "Applies to all welds; either stated test stage is permitted.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 0,
+        "types": [],
+        "needs_review": [],
+        "constraints": []
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 22",
+      "frozen_reference": {
+        "source_location": "Section 4.3.1(e), page 15",
+        "source_excerpt": "Either non-destructive acceptance testing shall be accomplished or the risk of defects be mitigated through process control.",
+        "engineering_meaning": "Defect risk shall be addressed by either performing non-destructive acceptance testing or mitigating defect risk through process control.",
+        "semantic_categories": [
+          "logical_or",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "Perform non-destructive acceptance testing OR mitigate defect risk through process control."
+        ],
+        "coverage_or_condition": "One of the two stated alternatives is required.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 0,
+        "types": [],
+        "needs_review": [],
+        "constraints": []
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 23",
+      "frozen_reference": {
+        "source_location": "Section 4.3.1(f), page 15",
+        "source_excerpt": "If process control is used, approval shall be obtained from the NASA Fracture Control Board",
+        "engineering_meaning": "If process control is used, NASA Fracture Control Board approval shall be obtained for spacecraft requiring such approval in programmatic requirements.",
+        "semantic_categories": [
+          "conditional",
+          "approval_governance",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "IF process control is used AND programmatic requirements require this approval for the spacecraft, THEN obtain NASA Fracture Control Board approval."
+        ],
+        "coverage_or_condition": "Conditional on use of process control and applicability of the programmatic approval requirement.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 0,
+        "types": [],
+        "needs_review": [],
+        "constraints": []
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 24",
+      "frozen_reference": {
+        "source_location": "Section 4.3.1(g), page 15",
+        "source_excerpt": "growth of the maximum credible crack size shall be demonstrated to the fracture control authority",
+        "engineering_meaning": "When fracture-mechanics and crack-growth analysis is used to verify NASA-STD-5019 compliance, demonstrate to the fracture control authority that growth of the maximum credible crack size is non-credible, based on relevant quality-control and manufacturing knowledge.",
+        "semantic_categories": [
+          "conditional",
+          "approval_governance",
+          "external_analysis",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "IF fracture-mechanics and crack-growth analysis are used to verify NASA-STD-5019 compliance, THEN demonstrate to the fracture control authority that growth of the maximum credible crack size is non-credible.",
+          "Base the demonstration on knowledge of quality-control and manufacturing techniques used to make the valve."
+        ],
+        "coverage_or_condition": "Applies only if fracture-mechanics and crack-growth analysis are used for NASA-STD-5019 compliance verification.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 0,
+        "types": [],
+        "needs_review": [],
+        "constraints": []
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 25",
+      "frozen_reference": {
+        "source_location": "Section 4.3.1(h), page 15",
+        "source_excerpt": "the NC parent metal valve shall be capable of surviving four times the design operational life.",
+        "engineering_meaning": "Regardless of how the capability is technically established, the NC parent-metal valve shall be capable of surviving at least four times its design operational life.",
+        "semantic_categories": [
+          "numeric_threshold",
+          "multiplier_relationship"
+        ],
+        "normalized_constraints": [
+          "Valve survival capability >= 4 × design operational life."
+        ],
+        "coverage_or_condition": "Applies regardless of the technical method used to establish capability.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 1,
+        "types": [
+          "unsupported"
+        ],
+        "needs_review": [
+          true
+        ],
+        "constraints": [
+          {
+            "source_line_id": "L16",
+            "constraint_id": "NCPR 25",
+            "type": "unsupported",
+            "unit": null,
+            "variable": "NC parent metal valve survival life",
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Required survival life is specified as four times the design operational life, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+            "source_text": "h. [NCPR 25] However this capability is technically established, the NC parent metal\nvalve shall be capable of surviving four times the design operational life."
+          }
+        ]
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 26",
+      "frozen_reference": {
+        "source_location": "Section 4.3.1(i), pages 15-16",
+        "source_excerpt": "verified by proof testing at 1.5xMEOP, independently applied to each parent metal shear-section",
+        "engineering_meaning": "If a valve design provides two separate and independent parent-metal barriers to flow before actuation, verify that capability through 1.5×MEOP proof testing independently applied to each shear-section and then externally after welding in the housing, with no permanent deformation or leakage during LAT.",
+        "semantic_categories": [
+          "numeric_threshold",
+          "multiplier_relationship",
+          "coverage",
+          "conditional",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "IF the valve design provides two separate and independent parent-metal barriers before actuation, THEN apply proof pressure >= 1.5 × MEOP independently to each parent-metal shear-section.",
+          "Then apply the proof test externally to the shear-section when welded in the housing.",
+          "During LAT: no evidence of permanent deformation AND no leakage."
+        ],
+        "coverage_or_condition": "Applies only to designs intended to provide two separate and independent parent-metal barriers before actuation.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 1,
+        "types": [
+          "unsupported"
+        ],
+        "needs_review": [
+          true
+        ],
+        "constraints": [
+          {
+            "source_line_id": "L17",
+            "constraint_id": "NCPR 26",
+            "type": "unsupported",
+            "unit": null,
+            "variable": "proof test pressure",
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Proof-test pressure is specified as 1.5xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+            "source_text": "i. [NCPR 26] If the valve design is to provide two separate and independent parent\nmetal barriers to the flow before valve actuation, this capability shall be verified by proof testing\nat 1.5xMEOP, independently applied to each parent metal shear-section and then externally to\n===== PDF PAGE 16 =====\nNASA-SPEC-5022 W/CHANGE 2\nAPPROVED FOR PUBLIC RELEASE – DISTRIBUTION IS UNLIMITED\n16 of 38\nthe shear-section when welded in the housing, with no evidence of permanent deformation or\nleakage during LAT."
+          }
+        ]
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 27",
+      "frozen_reference": {
+        "source_location": "Section 4.3.2(a), page 16",
+        "source_excerpt": "The minimum hold time for each burst pressure test shall be 5 min.",
+        "engineering_meaning": "Each burst-pressure test shall have a hold time of at least 5 minutes.",
+        "semantic_categories": [
+          "numeric_threshold",
+          "coverage",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "For each burst-pressure test: hold time >= 5 min."
+        ],
+        "coverage_or_condition": "Applies to every burst-pressure test.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 1,
+        "types": [
+          "lower_bound"
+        ],
+        "needs_review": [
+          false
+        ],
+        "constraints": [
+          {
+            "source_line_id": "L19",
+            "constraint_id": "NCPR 27",
+            "type": "lower_bound",
+            "unit": "min",
+            "variable": "hold time for each burst pressure test",
+            "min": "5",
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": false,
+            "review_reason": null,
+            "source_text": "a. [NCPR 27] The minimum hold time for each burst pressure test shall be 5 min."
+          }
+        ]
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 28",
+      "frozen_reference": {
+        "source_location": "Section 4.3.2(b), page 16",
+        "source_excerpt": "minimum design burst pressure of 2.5xMEOP for lines with diameters ≥3.8 cm",
+        "engineering_meaning": "All NC parent-metal valves shall meet a minimum design burst pressure of at least 2.5×MEOP for lines with diameter at least 3.8 cm (1.5 in), or at least 4.0×MEOP for lines with diameter below 3.8 cm (1.5 in).",
+        "semantic_categories": [
+          "numeric_threshold",
+          "multiplier_relationship",
+          "conditional",
+          "coverage"
+        ],
+        "normalized_constraints": [
+          "IF line diameter >= 3.8 cm (>= 1.5 in), THEN minimum design burst pressure >= 2.5 × MEOP.",
+          "IF line diameter < 3.8 cm (< 1.5 in), THEN minimum design burst pressure >= 4.0 × MEOP."
+        ],
+        "coverage_or_condition": "Applies to all NC parent-metal valves; applicable threshold depends on line diameter.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 1,
+        "types": [
+          "unsupported"
+        ],
+        "needs_review": [
+          true
+        ],
+        "constraints": [
+          {
+            "source_line_id": "L20",
+            "constraint_id": "NCPR 28",
+            "type": "unsupported",
+            "unit": null,
+            "variable": "minimum design burst pressure",
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Burst-pressure requirements are conditional on line diameter and expressed as 2.5xMEOP or 4.0xMEOP; the schema cannot represent conditional relationships to another engineering quantity.",
+            "source_text": "b. [NCPR 28] All NC parent metal valves shall meet a minimum design burst pressure\nof 2.5xMEOP for lines with diameters ≥3.8 cm (≥1.5 in) or 4.0xMEOP for lines with diameters\n<3.8 cm (<1.5 in)."
+          }
+        ]
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    },
+    {
+      "requirement_id": "NCPR 29",
+      "frozen_reference": {
+        "source_location": "Section 4.3.2(b)(1), page 16",
+        "source_excerpt": "This capability shall be demonstrated on at least one NC parent metal valve from each lot.",
+        "engineering_meaning": "The applicable NCPR 28 burst-pressure capability shall be demonstrated on at least one NC parent-metal valve from each lot.",
+        "semantic_categories": [
+          "numeric_threshold",
+          "sampling",
+          "coverage",
+          "procedural"
+        ],
+        "normalized_constraints": [
+          "For each valve lot: number of NC parent-metal valves demonstrating the applicable burst-pressure capability >= 1."
+        ],
+        "coverage_or_condition": "Applies to each valve lot.",
+        "reference_status": "FROZEN_AGREED_REFERENCE"
+      },
+      "prototype_run_03": {
+        "constraint_count": 0,
+        "types": [],
+        "needs_review": [],
+        "constraints": []
+      },
+      "evaluation": {
+        "status": "NOT_JUDGED",
+        "notes": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,252 @@
+{
+  "metadata": {
+    "stage": "RUN_03_DETERMINISTIC_AI_TO_CORE_ACCEPTABILITY",
+    "created_at_utc": "2026-09-02T15:49:48.432488+00:00",
+    "run_03_file": "validation/real_case_01_nasa/prototype/blind_ai_extract_run_03.json",
+    "run_03_sha256": "ac585b2c33beca0b8b2c3f208c1d1485cde765cd29d773001840417ec961a0b7",
+    "target_ids": [
+      "NCPR 18",
+      "NCPR 19",
+      "NCPR 20",
+      "NCPR 21",
+      "NCPR 22",
+      "NCPR 23",
+      "NCPR 24",
+      "NCPR 25",
+      "NCPR 26",
+      "NCPR 27",
+      "NCPR 28",
+      "NCPR 29"
+    ],
+    "ai_api_called": false,
+    "frozen_reference_used": false,
+    "solver_executed": false,
+    "check_scope": "Deterministic AI extraction structure and AI-to-Core adapter acceptability only."
+  },
+  "summary": {
+    "target_requirement_count": 12,
+    "found_requirement_count": 6,
+    "missing_requirement_ids": [
+      "NCPR 20",
+      "NCPR 21",
+      "NCPR 22",
+      "NCPR 23",
+      "NCPR 24",
+      "NCPR 29"
+    ],
+    "target_constraint_count": 7,
+    "structure_valid_count": 7,
+    "structure_invalid_count": 0,
+    "core_accepted_count": 2,
+    "core_rejected_count": 5,
+    "accepted_constraints_by_id": {
+      "NCPR 19": 1,
+      "NCPR 27": 1
+    }
+  },
+  "evaluations": [
+    {
+      "index": 1,
+      "constraint_id": "NCPR 18",
+      "source_line_id": "L7",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Minimum proof pressure is specified as 1.5xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+      "input_fields": {
+        "unit": null,
+        "variable": "pneumatic proof pressure",
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Minimum proof pressure is specified as 1.5xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 2,
+      "constraint_id": "NCPR 19",
+      "source_line_id": "L9",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Minimum leak-test pressure is specified as 1.0xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+      "input_fields": {
+        "unit": null,
+        "variable": "helium leak test pressure",
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Minimum leak-test pressure is specified as 1.0xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 3,
+      "constraint_id": "NCPR 19",
+      "source_line_id": "L9",
+      "declared_type": "upper_bound",
+      "needs_review": false,
+      "review_reason": null,
+      "input_fields": {
+        "unit": "standard cc/sec",
+        "variable": "resulting leak rate",
+        "min": null,
+        "max": "1e-6",
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": true,
+        "message": "AI Constraint가 Core 형식으로 변환되었습니다.",
+        "core_constraint": {
+          "id": "NCPR 19",
+          "type": "upper_bound",
+          "unit": "standard cc/sec",
+          "description": "Included as part of and after every proof pressure test is a helium leak test at a minimum of\n1.0xMEOP with a resulting leak rate less than 1x10-6 standard cc/sec.",
+          "variable": "resulting leak rate",
+          "max": "0.000001"
+        }
+      }
+    },
+    {
+      "index": 4,
+      "constraint_id": "NCPR 25",
+      "source_line_id": "L16",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Required survival life is specified as four times the design operational life, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+      "input_fields": {
+        "unit": null,
+        "variable": "NC parent metal valve survival life",
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Required survival life is specified as four times the design operational life, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 5,
+      "constraint_id": "NCPR 26",
+      "source_line_id": "L17",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Proof-test pressure is specified as 1.5xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+      "input_fields": {
+        "unit": null,
+        "variable": "proof test pressure",
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Proof-test pressure is specified as 1.5xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+        "core_constraint": null
+      }
+    },
+    {
+      "index": 6,
+      "constraint_id": "NCPR 27",
+      "source_line_id": "L19",
+      "declared_type": "lower_bound",
+      "needs_review": false,
+      "review_reason": null,
+      "input_fields": {
+        "unit": "min",
+        "variable": "hold time for each burst pressure test",
+        "min": "5",
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": true,
+        "message": "AI Constraint가 Core 형식으로 변환되었습니다.",
+        "core_constraint": {
+          "id": "NCPR 27",
+          "type": "lower_bound",
+          "unit": "min",
+          "description": "a. [NCPR 27] The minimum hold time for each burst pressure test shall be 5 min.",
+          "variable": "hold time for each burst pressure test",
+          "min": "5"
+        }
+      }
+    },
+    {
+      "index": 7,
+      "constraint_id": "NCPR 28",
+      "source_line_id": "L20",
+      "declared_type": "unsupported",
+      "needs_review": true,
+      "review_reason": "Burst-pressure requirements are conditional on line diameter and expressed as 2.5xMEOP or 4.0xMEOP; the schema cannot represent conditional relationships to another engineering quantity.",
+      "input_fields": {
+        "unit": null,
+        "variable": "minimum design burst pressure",
+        "min": null,
+        "max": null,
+        "left": null,
+        "right": null,
+        "variables": [],
+        "limit": null
+      },
+      "structure_guard": {
+        "valid": true,
+        "message": ""
+      },
+      "core_adapter": {
+        "accepted": false,
+        "message": "AI가 사람의 검토가 필요하다고 판단했습니다. 이유: Burst-pressure requirements are conditional on line diameter and expressed as 2.5xMEOP or 4.0xMEOP; the schema cannot represent conditional relationships to another engineering quantity.",
+        "core_constraint": null
+      }
+    }
+  ]
+}

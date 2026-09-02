@@ -1,0 +1,138 @@
+{
+  "metadata": {
+    "stage": "NASA_TEST_01_FINAL_ADJUDICATION_RUN_03",
+    "created_at_utc": "2026-09-02T15:54:00.357434+00:00",
+    "evaluator_judgments_explicit": true,
+    "automatic_semantic_pass_fail": false,
+    "prototype_modified_during_adjudication": false,
+    "ai_api_call_during_adjudication": false,
+    "solver_execution_during_adjudication": false,
+    "blind_run_03_output_modified": false,
+    "legacy_display_label_note": "The Run #3 reference-alignment and AI-to-Core evaluation scripts retained a legacy 'RUN #2' console banner in some print statements. Their Run #3 input/output filenames were used. Frozen evidence artifacts were not rewritten to hide this labeling issue."
+  },
+  "evidence": {
+    "frozen_reference": {
+      "file": "validation/real_case_01_nasa/reference/reference_v1.json",
+      "sha256": "ae9ced515a73a0a35a8887f0ff815928f602388ad1c49e3da083c6a46b09f4ba"
+    },
+    "blind_run_03": {
+      "file": "validation/real_case_01_nasa/prototype/blind_ai_extract_run_03.json",
+      "sha256": "ac585b2c33beca0b8b2c3f208c1d1485cde765cd29d773001840417ec961a0b7"
+    },
+    "run_02_vs_03_comparison": {
+      "file": "validation/real_case_01_nasa/prototype/blind_run_02_vs_03_comparison.json",
+      "sha256": "d437b8da12c11dac4411b1c47320f1aa2bda84564c24b8e5e398a0f2444168eb"
+    },
+    "run_03_reference_snapshot": {
+      "file": "validation/real_case_01_nasa/prototype/run_03_vs_frozen_reference_snapshot.json",
+      "sha256": "4c4c3eb96157dfd6b452ec3e1d644a555c7090bd7f75b07cabf831810d092b5c"
+    },
+    "run_03_core_acceptability": {
+      "file": "validation/real_case_01_nasa/prototype/run_03_ai_to_core_acceptability.json",
+      "sha256": "c4fc1edab7a1abdf16013d4379a4458555791c09ccec5c7529ddea4384af7d8e"
+    },
+    "preprocess_run_04": {
+      "file": "validation/real_case_01_nasa/prototype/blind_preprocess_run_04.json",
+      "sha256": "2c68b821c08397478031da8a1bb350bfe51499c9c90f475e8cf54b672882e6d2"
+    }
+  },
+  "summary": {
+    "target_requirement_count": 12,
+    "run_02_claimed_target_ids_found": 12,
+    "run_03_claimed_target_ids_found": 6,
+    "run_03_source_grounded_target_requirements": 5,
+    "run_03_lost_target_ids": [
+      "NCPR 20",
+      "NCPR 21",
+      "NCPR 22",
+      "NCPR 23",
+      "NCPR 24",
+      "NCPR 29"
+    ],
+    "raw_core_accepted_count": 2,
+    "semantically_correct_core_ready_count": 1,
+    "semantically_correct_core_ready_ids": [
+      "NCPR 27"
+    ],
+    "source_attribution_mismatch_count": 2,
+    "status_counts": {
+      "ATTRIBUTION_FAILURE_UNSAFE_CORE_ACCEPTANCE": 1,
+      "CORRECT_CORE_READY": 1,
+      "DISCOVERY_MISS": 6,
+      "SAFE_UNSUPPORTED": 4
+    },
+    "general_fix_cycle_02": {
+      "A_multiplier_numeric_contract": "IMPROVED_FAIL_SAFE",
+      "B_scientific_notation": "STRUCTURAL_NORMALIZATION_IMPROVED_BUT_SEMANTIC_SAFETY_INCOMPLETE",
+      "C_preprocessing_attribution": "IMPROVED",
+      "C_ai_level_attribution": "LIMITATION_REMAINS",
+      "document_level_discovery": "REGRESSED"
+    },
+    "overall_conclusion": "PARTIAL_SUCCESS_WITH_FAIL_SAFE_IMPROVEMENTS_AND_DOCUMENT_LEVEL_DISCOVERY_REGRESSION",
+    "test_01_closure_decision": "CLOSE_TEST_01_NO_RUN_04",
+    "next_validation_stage": "REAL_CASE_TEST_02_FULL_R_V_F_ESCAPE_SEARCH"
+  },
+  "requirements": [
+    {
+      "requirement_id": "NCPR 18",
+      "status": "SAFE_UNSUPPORTED",
+      "reason": "Requirement was discovered from its explicit source block. The 1.5xMEOP multiplier relationship was not reduced to a false scalar lower bound; it was blocked for review."
+    },
+    {
+      "requirement_id": "NCPR 19",
+      "status": "ATTRIBUTION_FAILURE_UNSAFE_CORE_ACCEPTANCE",
+      "reason": "Run #3 outputs labeled NCPR 19 came from anonymous source block L9 rather than the explicit NCPR 19 source block. One resulting upper_bound was Core-accepted, so raw Core acceptance must not be treated as semantic correctness."
+    },
+    {
+      "requirement_id": "NCPR 20",
+      "status": "DISCOVERY_MISS",
+      "reason": "No Run #3 constraint was produced for this target requirement."
+    },
+    {
+      "requirement_id": "NCPR 21",
+      "status": "DISCOVERY_MISS",
+      "reason": "No Run #3 constraint was produced for this target requirement."
+    },
+    {
+      "requirement_id": "NCPR 22",
+      "status": "DISCOVERY_MISS",
+      "reason": "No Run #3 constraint was produced for this target requirement."
+    },
+    {
+      "requirement_id": "NCPR 23",
+      "status": "DISCOVERY_MISS",
+      "reason": "No Run #3 constraint was produced for this target requirement."
+    },
+    {
+      "requirement_id": "NCPR 24",
+      "status": "DISCOVERY_MISS",
+      "reason": "The external-analysis requirement was not discovered in Run #3."
+    },
+    {
+      "requirement_id": "NCPR 25",
+      "status": "SAFE_UNSUPPORTED",
+      "reason": "The four-times-design-life relationship was discovered but conservatively blocked instead of being reduced to an unsupported scalar meaning."
+    },
+    {
+      "requirement_id": "NCPR 26",
+      "status": "SAFE_UNSUPPORTED",
+      "reason": "The requirement was discovered with cross-page source continuation preserved. Its conditional, coverage, and multiplier semantics were conservatively blocked."
+    },
+    {
+      "requirement_id": "NCPR 27",
+      "status": "CORRECT_CORE_READY",
+      "reason": "The minimum hold time of 5 min was represented as a lower_bound without review and accepted by the Core."
+    },
+    {
+      "requirement_id": "NCPR 28",
+      "status": "SAFE_UNSUPPORTED",
+      "reason": "The diameter-dependent 2.5xMEOP / 4.0xMEOP branches were no longer emitted as false executable scalar bounds. The conditional multiplier semantics were blocked for review."
+    },
+    {
+      "requirement_id": "NCPR 29",
+      "status": "DISCOVERY_MISS",
+      "reason": "The per-lot sampling requirement was not discovered in Run #3."
+    }
+  ],
+  "evaluator_note": "The purpose of these labels is post-run adjudication of already frozen evidence. They are not prototype outputs, expected solver answers, or parser tuning targets, and they are not fed back into the prototype."
+}

@@ -1,0 +1,1068 @@
+{
+  "metadata": {
+    "stage": "BLIND_RUN_02_VS_03_DETERMINISTIC_COMPARISON",
+    "created_at_utc": "2026-09-02T15:46:14.485203+00:00",
+    "run_02_file": "validation/real_case_01_nasa/prototype/blind_ai_extract_run_02.json",
+    "run_02_sha256": "0bac052cc34299b623e361ba8810632da2998b8396f10c21224ab18fbba57932",
+    "run_03_file": "validation/real_case_01_nasa/prototype/blind_ai_extract_run_03.json",
+    "run_03_sha256": "ac585b2c33beca0b8b2c3f208c1d1485cde765cd29d773001840417ec961a0b7",
+    "preprocess_02_file": "validation/real_case_01_nasa/prototype/blind_preprocess_run_03.json",
+    "preprocess_02_sha256": "e75a7dc35232a3b1fe6f4be1e1ddbed6f9191724c68e9fb8f8eb729769ae806e",
+    "preprocess_03_file": "validation/real_case_01_nasa/prototype/blind_preprocess_run_04.json",
+    "preprocess_03_sha256": "2c68b821c08397478031da8a1bb350bfe51499c9c90f475e8cf54b672882e6d2",
+    "reference_file_used": false,
+    "semantic_correctness_judged": false,
+    "automatic_pass_fail": false,
+    "target_ids_used_only_after_blind_runs": true
+  },
+  "summary": {
+    "target_requirement_count": 12,
+    "run_02_total_extracted": 19,
+    "run_03_total_extracted": 9,
+    "run_02_target_requirements_found": 12,
+    "run_03_target_requirements_found": 6,
+    "run_02_target_ids": [
+      "NCPR 18",
+      "NCPR 19",
+      "NCPR 20",
+      "NCPR 21",
+      "NCPR 22",
+      "NCPR 23",
+      "NCPR 24",
+      "NCPR 25",
+      "NCPR 26",
+      "NCPR 27",
+      "NCPR 28",
+      "NCPR 29"
+    ],
+    "run_03_target_ids": [
+      "NCPR 18",
+      "NCPR 19",
+      "NCPR 25",
+      "NCPR 26",
+      "NCPR 27",
+      "NCPR 28"
+    ],
+    "target_ids_lost_in_run_03": [
+      "NCPR 20",
+      "NCPR 21",
+      "NCPR 22",
+      "NCPR 23",
+      "NCPR 24",
+      "NCPR 29"
+    ],
+    "target_ids_new_in_run_03": [],
+    "run_02_type_counts_all": {
+      "lower_bound": 6,
+      "unsupported": 12,
+      "upper_bound": 1
+    },
+    "run_03_type_counts_all": {
+      "lower_bound": 1,
+      "unsupported": 7,
+      "upper_bound": 1
+    },
+    "run_02_source_attribution_mismatch_count": 0,
+    "run_03_source_attribution_mismatch_count": 2
+  },
+  "source_attribution": {
+    "run_02_checks": [
+      {
+        "constraint_id": "NCPR 16",
+        "type": "unsupported",
+        "source_line_id": "L2",
+        "expected_source_marker": "[NCPR 16]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 17",
+        "type": "unsupported",
+        "source_line_id": "L3",
+        "expected_source_marker": "[NCPR 17]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 18",
+        "type": "lower_bound",
+        "source_line_id": "L4",
+        "expected_source_marker": "[NCPR 18]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 19",
+        "type": "lower_bound",
+        "source_line_id": "L5",
+        "expected_source_marker": "[NCPR 19]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 19",
+        "type": "upper_bound",
+        "source_line_id": "L5",
+        "expected_source_marker": "[NCPR 19]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 20",
+        "type": "unsupported",
+        "source_line_id": "L6",
+        "expected_source_marker": "[NCPR 20]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 21",
+        "type": "unsupported",
+        "source_line_id": "L7",
+        "expected_source_marker": "[NCPR 21]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 22",
+        "type": "unsupported",
+        "source_line_id": "L8",
+        "expected_source_marker": "[NCPR 22]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 23",
+        "type": "unsupported",
+        "source_line_id": "L9",
+        "expected_source_marker": "[NCPR 23]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 24",
+        "type": "unsupported",
+        "source_line_id": "L10",
+        "expected_source_marker": "[NCPR 24]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 25",
+        "type": "unsupported",
+        "source_line_id": "L11",
+        "expected_source_marker": "[NCPR 25]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 26",
+        "type": "unsupported",
+        "source_line_id": "L12",
+        "expected_source_marker": "[NCPR 26]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 27",
+        "type": "lower_bound",
+        "source_line_id": "L13",
+        "expected_source_marker": "[NCPR 27]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 28",
+        "type": "lower_bound",
+        "source_line_id": "L14",
+        "expected_source_marker": "[NCPR 28]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 28",
+        "type": "lower_bound",
+        "source_line_id": "L14",
+        "expected_source_marker": "[NCPR 28]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 29",
+        "type": "unsupported",
+        "source_line_id": "L15",
+        "expected_source_marker": "[NCPR 29]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 30",
+        "type": "lower_bound",
+        "source_line_id": "L16",
+        "expected_source_marker": "[NCPR 30]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 31",
+        "type": "unsupported",
+        "source_line_id": "L17",
+        "expected_source_marker": "[NCPR 31]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 32",
+        "type": "unsupported",
+        "source_line_id": "L18",
+        "expected_source_marker": "[NCPR 32]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      }
+    ],
+    "run_03_checks": [
+      {
+        "constraint_id": "NCPR 18",
+        "type": "unsupported",
+        "source_line_id": "L7",
+        "expected_source_marker": "[NCPR 18]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 19",
+        "type": "unsupported",
+        "source_line_id": "L9",
+        "expected_source_marker": "[NCPR 19]",
+        "marker_present_in_source_block": false,
+        "status": "CLAIM_NOT_PRESENT_IN_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 19",
+        "type": "upper_bound",
+        "source_line_id": "L9",
+        "expected_source_marker": "[NCPR 19]",
+        "marker_present_in_source_block": false,
+        "status": "CLAIM_NOT_PRESENT_IN_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 25",
+        "type": "unsupported",
+        "source_line_id": "L16",
+        "expected_source_marker": "[NCPR 25]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 26",
+        "type": "unsupported",
+        "source_line_id": "L17",
+        "expected_source_marker": "[NCPR 26]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 27",
+        "type": "lower_bound",
+        "source_line_id": "L19",
+        "expected_source_marker": "[NCPR 27]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 28",
+        "type": "unsupported",
+        "source_line_id": "L20",
+        "expected_source_marker": "[NCPR 28]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "UNSPECIFIED",
+        "type": "unsupported",
+        "source_line_id": "L23",
+        "expected_source_marker": null,
+        "marker_present_in_source_block": null,
+        "status": "NO_EXPLICIT_NCPR_CLAIM"
+      },
+      {
+        "constraint_id": "NCPR 31",
+        "type": "unsupported",
+        "source_line_id": "L25",
+        "expected_source_marker": "[NCPR 31]",
+        "marker_present_in_source_block": true,
+        "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+      }
+    ],
+    "run_02_mismatches": [],
+    "run_03_mismatches": [
+      {
+        "constraint_id": "NCPR 19",
+        "type": "unsupported",
+        "source_line_id": "L9",
+        "expected_source_marker": "[NCPR 19]",
+        "marker_present_in_source_block": false,
+        "status": "CLAIM_NOT_PRESENT_IN_SOURCE_BLOCK"
+      },
+      {
+        "constraint_id": "NCPR 19",
+        "type": "upper_bound",
+        "source_line_id": "L9",
+        "expected_source_marker": "[NCPR 19]",
+        "marker_present_in_source_block": false,
+        "status": "CLAIM_NOT_PRESENT_IN_SOURCE_BLOCK"
+      }
+    ]
+  },
+  "per_requirement": [
+    {
+      "requirement_id": "NCPR 18",
+      "comparison_status": "TYPE_DISTRIBUTION_CHANGED",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "lower_bound": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 18",
+            "type": "lower_bound",
+            "variable": "pneumatic proof pressure",
+            "unit": null,
+            "min": "1.5xMEOP",
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": false,
+            "review_reason": null,
+            "source_line_id": "L4"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 18",
+            "type": "lower_bound",
+            "source_line_id": "L4",
+            "expected_source_marker": "[NCPR 18]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 18",
+            "type": "unsupported",
+            "variable": "pneumatic proof pressure",
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Minimum proof pressure is specified as 1.5xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+            "source_line_id": "L7"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 18",
+            "type": "unsupported",
+            "source_line_id": "L7",
+            "expected_source_marker": "[NCPR 18]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      }
+    },
+    {
+      "requirement_id": "NCPR 19",
+      "comparison_status": "TYPE_DISTRIBUTION_CHANGED",
+      "run_02": {
+        "constraint_count": 2,
+        "type_counts": {
+          "lower_bound": 1,
+          "upper_bound": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 19",
+            "type": "lower_bound",
+            "variable": "helium leak test pressure",
+            "unit": null,
+            "min": "1.0xMEOP",
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": false,
+            "review_reason": null,
+            "source_line_id": "L5"
+          },
+          {
+            "constraint_id": "NCPR 19",
+            "type": "upper_bound",
+            "variable": "resulting leak rate",
+            "unit": "standard cc/sec",
+            "min": null,
+            "max": "1x10-6",
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "The source uses a strict 'less than' inequality, while upper_bound represents a non-strict maximum.",
+            "source_line_id": "L5"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 19",
+            "type": "lower_bound",
+            "source_line_id": "L5",
+            "expected_source_marker": "[NCPR 19]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          },
+          {
+            "constraint_id": "NCPR 19",
+            "type": "upper_bound",
+            "source_line_id": "L5",
+            "expected_source_marker": "[NCPR 19]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 2,
+        "type_counts": {
+          "unsupported": 1,
+          "upper_bound": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 19",
+            "type": "unsupported",
+            "variable": "helium leak test pressure",
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Minimum leak-test pressure is specified as 1.0xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+            "source_line_id": "L9"
+          },
+          {
+            "constraint_id": "NCPR 19",
+            "type": "upper_bound",
+            "variable": "resulting leak rate",
+            "unit": "standard cc/sec",
+            "min": null,
+            "max": "1e-6",
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": false,
+            "review_reason": null,
+            "source_line_id": "L9"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 19",
+            "type": "unsupported",
+            "source_line_id": "L9",
+            "expected_source_marker": "[NCPR 19]",
+            "marker_present_in_source_block": false,
+            "status": "CLAIM_NOT_PRESENT_IN_SOURCE_BLOCK"
+          },
+          {
+            "constraint_id": "NCPR 19",
+            "type": "upper_bound",
+            "source_line_id": "L9",
+            "expected_source_marker": "[NCPR 19]",
+            "marker_present_in_source_block": false,
+            "status": "CLAIM_NOT_PRESENT_IN_SOURCE_BLOCK"
+          }
+        ]
+      }
+    },
+    {
+      "requirement_id": "NCPR 20",
+      "comparison_status": "LOST_IN_RUN_03",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 20",
+            "type": "unsupported",
+            "variable": null,
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Required test coverage for specified valve parts is not representable by a supported constraint type.",
+            "source_line_id": "L6"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 20",
+            "type": "unsupported",
+            "source_line_id": "L6",
+            "expected_source_marker": "[NCPR 20]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 0,
+        "type_counts": {},
+        "constraints": [],
+        "attribution_checks": []
+      }
+    },
+    {
+      "requirement_id": "NCPR 21",
+      "comparison_status": "LOST_IN_RUN_03",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 21",
+            "type": "unsupported",
+            "variable": null,
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Leak-testing and referenced-standard compliance requirements are not represented by a supported constraint type.",
+            "source_line_id": "L7"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 21",
+            "type": "unsupported",
+            "source_line_id": "L7",
+            "expected_source_marker": "[NCPR 21]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 0,
+        "type_counts": {},
+        "constraints": [],
+        "attribution_checks": []
+      }
+    },
+    {
+      "requirement_id": "NCPR 22",
+      "comparison_status": "LOST_IN_RUN_03",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 22",
+            "type": "unsupported",
+            "variable": null,
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Alternative non-destructive testing or process-control requirement is not representable by a supported constraint type.",
+            "source_line_id": "L8"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 22",
+            "type": "unsupported",
+            "source_line_id": "L8",
+            "expected_source_marker": "[NCPR 22]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 0,
+        "type_counts": {},
+        "constraints": [],
+        "attribution_checks": []
+      }
+    },
+    {
+      "requirement_id": "NCPR 23",
+      "comparison_status": "LOST_IN_RUN_03",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 23",
+            "type": "unsupported",
+            "variable": null,
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Conditional approval requirement is not representable by a supported constraint type.",
+            "source_line_id": "L9"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 23",
+            "type": "unsupported",
+            "source_line_id": "L9",
+            "expected_source_marker": "[NCPR 23]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 0,
+        "type_counts": {},
+        "constraints": [],
+        "attribution_checks": []
+      }
+    },
+    {
+      "requirement_id": "NCPR 24",
+      "comparison_status": "LOST_IN_RUN_03",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 24",
+            "type": "unsupported",
+            "variable": null,
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Non-credible crack-growth demonstration requirement is qualitative and unsupported.",
+            "source_line_id": "L10"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 24",
+            "type": "unsupported",
+            "source_line_id": "L10",
+            "expected_source_marker": "[NCPR 24]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 0,
+        "type_counts": {},
+        "constraints": [],
+        "attribution_checks": []
+      }
+    },
+    {
+      "requirement_id": "NCPR 25",
+      "comparison_status": "COUNT_AND_TYPE_DISTRIBUTION_UNCHANGED",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 25",
+            "type": "unsupported",
+            "variable": null,
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Survival for four times design operational life is a life-multiplier relationship not supported by the available constraint types.",
+            "source_line_id": "L11"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 25",
+            "type": "unsupported",
+            "source_line_id": "L11",
+            "expected_source_marker": "[NCPR 25]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 25",
+            "type": "unsupported",
+            "variable": "NC parent metal valve survival life",
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Required survival life is specified as four times the design operational life, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+            "source_line_id": "L16"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 25",
+            "type": "unsupported",
+            "source_line_id": "L16",
+            "expected_source_marker": "[NCPR 25]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      }
+    },
+    {
+      "requirement_id": "NCPR 26",
+      "comparison_status": "COUNT_AND_TYPE_DISTRIBUTION_UNCHANGED",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 26",
+            "type": "unsupported",
+            "variable": null,
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Proof testing at an exact 1.5xMEOP condition, applied to specified locations, is not expressible as a supported bound without changing its meaning.",
+            "source_line_id": "L12"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 26",
+            "type": "unsupported",
+            "source_line_id": "L12",
+            "expected_source_marker": "[NCPR 26]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 26",
+            "type": "unsupported",
+            "variable": "proof test pressure",
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Proof-test pressure is specified as 1.5xMEOP, a relationship to another engineering quantity that cannot be represented as a scalar lower_bound.",
+            "source_line_id": "L17"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 26",
+            "type": "unsupported",
+            "source_line_id": "L17",
+            "expected_source_marker": "[NCPR 26]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      }
+    },
+    {
+      "requirement_id": "NCPR 27",
+      "comparison_status": "COUNT_AND_TYPE_DISTRIBUTION_UNCHANGED",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "lower_bound": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 27",
+            "type": "lower_bound",
+            "variable": "hold time for each burst pressure test",
+            "unit": "min",
+            "min": "5",
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": false,
+            "review_reason": null,
+            "source_line_id": "L13"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 27",
+            "type": "lower_bound",
+            "source_line_id": "L13",
+            "expected_source_marker": "[NCPR 27]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 1,
+        "type_counts": {
+          "lower_bound": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 27",
+            "type": "lower_bound",
+            "variable": "hold time for each burst pressure test",
+            "unit": "min",
+            "min": "5",
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": false,
+            "review_reason": null,
+            "source_line_id": "L19"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 27",
+            "type": "lower_bound",
+            "source_line_id": "L19",
+            "expected_source_marker": "[NCPR 27]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      }
+    },
+    {
+      "requirement_id": "NCPR 28",
+      "comparison_status": "CONSTRAINT_COUNT_CHANGED",
+      "run_02": {
+        "constraint_count": 2,
+        "type_counts": {
+          "lower_bound": 2
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 28",
+            "type": "lower_bound",
+            "variable": "minimum design burst pressure for lines with diameters ≥3.8 cm (≥1.5 in)",
+            "unit": null,
+            "min": "2.5xMEOP",
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "The lower bound is conditional on a line-diameter threshold, which cannot be structurally represented by the supported types.",
+            "source_line_id": "L14"
+          },
+          {
+            "constraint_id": "NCPR 28",
+            "type": "lower_bound",
+            "variable": "minimum design burst pressure for lines with diameters <3.8 cm (<1.5 in)",
+            "unit": null,
+            "min": "4.0xMEOP",
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "The lower bound is conditional on a line-diameter threshold, which cannot be structurally represented by the supported types.",
+            "source_line_id": "L14"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 28",
+            "type": "lower_bound",
+            "source_line_id": "L14",
+            "expected_source_marker": "[NCPR 28]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          },
+          {
+            "constraint_id": "NCPR 28",
+            "type": "lower_bound",
+            "source_line_id": "L14",
+            "expected_source_marker": "[NCPR 28]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 28",
+            "type": "unsupported",
+            "variable": "minimum design burst pressure",
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Burst-pressure requirements are conditional on line diameter and expressed as 2.5xMEOP or 4.0xMEOP; the schema cannot represent conditional relationships to another engineering quantity.",
+            "source_line_id": "L20"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 28",
+            "type": "unsupported",
+            "source_line_id": "L20",
+            "expected_source_marker": "[NCPR 28]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      }
+    },
+    {
+      "requirement_id": "NCPR 29",
+      "comparison_status": "LOST_IN_RUN_03",
+      "run_02": {
+        "constraint_count": 1,
+        "type_counts": {
+          "unsupported": 1
+        },
+        "constraints": [
+          {
+            "constraint_id": "NCPR 29",
+            "type": "unsupported",
+            "variable": null,
+            "unit": null,
+            "min": null,
+            "max": null,
+            "left": null,
+            "right": null,
+            "variables": [],
+            "limit": null,
+            "needs_review": true,
+            "review_reason": "Lot-sampling requirement ('at least one' valve from each lot) is not representable by a supported constraint type.",
+            "source_line_id": "L15"
+          }
+        ],
+        "attribution_checks": [
+          {
+            "constraint_id": "NCPR 29",
+            "type": "unsupported",
+            "source_line_id": "L15",
+            "expected_source_marker": "[NCPR 29]",
+            "marker_present_in_source_block": true,
+            "status": "CLAIM_SUPPORTED_BY_SOURCE_BLOCK"
+          }
+        ]
+      },
+      "run_03": {
+        "constraint_count": 0,
+        "type_counts": {},
+        "constraints": [],
+        "attribution_checks": []
+      }
+    }
+  ]
+}

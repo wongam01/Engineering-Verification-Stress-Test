@@ -1,0 +1,103 @@
+
+===== PDF PAGE 15 =====
+NASA-SPEC-5022 W/CHANGE 2 
+ 
+APPROVED FOR PUBLIC RELEASE – DISTRIBUTION IS UNLIMITED  
+ 
+15 of 38 
+4.3 Pneumatic Pressure Tests 
+ 
+a. [NCPR 16] All valves shall meet pneumatic leak test and proof pressure test 
+requirements in accordance with section 4.3.1 in this NASA Technical Specification. 
+ 
+b. [NCPR 17] Each valve lot shall be qualified by meeting burst pressure test 
+requirements in accordance with section 4.3.1 in this NASA Technical Specification. 
+ 
+4.3.1 Proof Pressure and Leak Tests 
+a. [NCPR 18] All valves shall be proof tested to a minimum pneumatic proof pressure at 
+1.5xMEOP.  
+ 
+b. [NCPR 19] This capability shall be demonstrated on every unit during assembly, with 
+pressure applied individually to each line and separately to the valve housing through the 
+actuation ram chamber while the lines are vented.   
+ 
+Included as part of and after every proof pressure test is a helium leak test at a minimum of 
+1.0xMEOP with a resulting leak rate less than 1x10-6 standard cc/sec.  
+ 
+c. [NCPR 20] The test shall be performed on all parent metal shear-section and all parts 
+of the valve exposed to pressure after valve actuation (checklist item 7AC).  
+ 
+d. [NCPR 21] All welds shall be leak tested either during assembly or acceptance testing 
+(checklist item 32A).  
+ 
+Fracture mechanics and damage tolerance testing are to satisfy NASA-STD-5019.    
+ 
+e. [NCPR 22] Either non-destructive acceptance testing (checklist item 6C) shall be 
+accomplished or the risk of defects be mitigated through process control.  
+ 
+f. [NCPR 23] If process control is used, approval shall be obtained from the NASA 
+Fracture Control Board for spacecraft requiring this in programmatic requirements.  
+ 
+ g. [NCPR 24] If fracture mechanics and crack growth analysis are used to verify 
+compliance with NASA-STD-5019 (see section 4.1 of this NASA Technical Specification), 
+growth of the maximum credible crack size shall be demonstrated to the fracture control 
+authority to be non-credible, based on knowledge of quality control and manufacturing 
+techniques used to make the NC parent metal valve.   
+ 
+h. [NCPR 25] However this capability is technically established, the NC parent metal 
+valve shall be capable of surviving four times the design operational life.  
+ 
+i. [NCPR 26] If the valve design is to provide two separate and independent parent 
+metal barriers to the flow before valve actuation, this capability shall be verified by proof testing 
+at 1.5xMEOP, independently applied to each parent metal shear-section and then externally to
+
+
+===== PDF PAGE 16 =====
+NASA-SPEC-5022 W/CHANGE 2 
+ 
+APPROVED FOR PUBLIC RELEASE – DISTRIBUTION IS UNLIMITED  
+ 
+16 of 38 
+the shear-section when welded in the housing, with no evidence of permanent deformation or 
+leakage during LAT.   
+ 
+4.3.2 Burst Pressure Test 
+ 
+a. [NCPR 27] The minimum hold time for each burst pressure test shall be 5 min. 
+ 
+b. [NCPR 28] All NC parent metal valves shall meet a minimum design burst pressure 
+of 2.5xMEOP for lines with diameters ≥3.8 cm (≥1.5 in) or 4.0xMEOP for lines with diameters 
+<3.8 cm (<1.5 in). 
+ 
+(1) [NCPR 29] This capability shall be demonstrated on at least one NC parent metal 
+valve from each lot.  
+ 
+(2) [NCPR 30] Testing shall be performed before and after actuation and on a sample 
+of the units that have successfully functioned after destructive acceptance testing 
+(checklist items 8AD and 33D).  
+ 
+NC parent metal used in hazardous systems without additional barriers to leakage may be 
+required by USAF Range Safety and NASA Payload Safety to have a minimum design burst 
+pressure requirement of 4.0 times maximum ground working pressure (MGWP). NC parent 
+metal valves used in hazardous systems without additional barriers to leakage are considered 
+Category A ordnance devices and have to follow NASA-STD 8719.24 and AFSPCMAN 91-710, 
+Volume 3, Chapter 13, or equivalent document for applicable range. This requirement should be 
+identified and documented early in the launch facility coordination process and be documented 
+in the tailoring agreement. This requirement would not apply to Category B ordnance pyrovalve 
+applications, which are, by definition, non-hazardous. 
+ 
+CAUTION:  An expended (fired) pyrovalve may retain significant pressure in the primer 
+chamber assembly for an indefinite period of time. 
+ 
+ c. [NCPR 31] If the unit passes the burst pressure test, the pressure shall be increased 
+until burst actually occurs or 4.00xMEOP is reached, at which point the test can be discontinued.   
+ 
+Additionally, if the valve does not fail after 4.00xMEOP, it meets the full safety factor applied to 
+tubing <3.81 cm (<1.5in) in diameter (checklist item 33D).  
+ 
+4.4 General Requirements 
+ 
+4.4.1 Internal Structural Requirements 
+ 
+ a. [NCPR 32] An NC valve used in ELV hazardous prelaunch applications shall provide 
+a parent metal barrier in the shear-section.
