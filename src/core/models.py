@@ -20,6 +20,64 @@ def to_decimal(value: Any) -> Decimal:
 
 
 # =========================================================
+# FEASIBLE DOMAIN EVIDENCE
+# =========================================================
+
+@dataclass(frozen=True)
+class FeasibleDomainEvidence:
+    """
+    Feasible Domain의 출처와
+    엔지니어 검토 상태를 보존한다.
+
+    AI가 Feasible Domain을 임의로 결정하는 것이 아니라,
+    실제 Engineering Evidence의 출처를
+    추적하기 위한 모델이다.
+    """
+
+    source_type: str
+    source_reference: str
+    approval_status: str = "unreviewed"
+    note: str | None = None
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+    ) -> "FeasibleDomainEvidence":
+
+        return cls(
+            source_type=data["source_type"],
+            source_reference=data[
+                "source_reference"
+            ],
+            approval_status=data.get(
+                "approval_status",
+                "unreviewed",
+            ),
+            note=data.get(
+                "note"
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+
+        data = {
+            "source_type": self.source_type,
+            "source_reference": (
+                self.source_reference
+            ),
+            "approval_status": (
+                self.approval_status
+            ),
+        }
+
+        if self.note is not None:
+            data["note"] = self.note
+
+        return data
+
+
+# =========================================================
 # VARIABLE
 # =========================================================
 
@@ -39,11 +97,19 @@ class VariableSpec:
     verification_min: Decimal
     verification_max: Decimal
 
+    feasible_evidence: (
+        FeasibleDomainEvidence | None
+    ) = None
+
     @classmethod
     def from_dict(
         cls,
         data: dict[str, Any],
     ) -> "VariableSpec":
+
+        evidence_data = data.get(
+            "feasible_evidence"
+        )
 
         return cls(
             unit=data["unit"],
@@ -67,11 +133,19 @@ class VariableSpec:
             verification_max=to_decimal(
                 data["verification_max"]
             ),
+
+            feasible_evidence=(
+                FeasibleDomainEvidence.from_dict(
+                    evidence_data
+                )
+                if evidence_data is not None
+                else None
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
 
-        return {
+        data = {
             "unit": self.unit,
 
             "nominal": self.nominal,
@@ -87,6 +161,13 @@ class VariableSpec:
                 self.verification_max
             ),
         }
+
+        if self.feasible_evidence is not None:
+            data["feasible_evidence"] = (
+                self.feasible_evidence.to_dict()
+            )
+
+        return data
 
 
 # =========================================================
@@ -191,7 +272,11 @@ class RequirementSpec:
         self,
     ) -> tuple[str, ...]:
 
-        if self.type == "range":
+        if self.type in {
+            "range",
+            "lower_bound",
+            "upper_bound",
+        }:
 
             if self.variable is None:
                 return tuple()
@@ -253,6 +338,20 @@ class RequirementSpec:
                 self.max_value
             )
 
+        elif self.type == "lower_bound":
+            data["variable"] = (
+                self.variable
+            )
+            data["min"] = (
+                self.min_value
+            )
+        elif self.type == "upper_bound":
+            data["variable"] = (
+                self.variable
+            )
+            data["max"] = (
+                self.max_value
+            )
         elif self.type == "difference_min":
 
             data["left"] = (

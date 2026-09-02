@@ -80,6 +80,42 @@ class PatchEvaluation:
 
     patched_case: EngineeringCase | None = None
 
+    @property
+    def model_closure_candidate(
+        self,
+    ) -> bool:
+        """
+        현재 수학적 모델 안에서:
+
+        1. Patch 입력이 유효하고
+        2. Verification Escape를 닫으며
+        3. Nominal State를 보존하는지 나타낸다.
+
+        제조 가능성, 비용, 공정능력,
+        검사시간의 적합성을 의미하지 않는다.
+        """
+
+        return (
+            self.valid_input
+            and
+            self.closes_escape
+            and
+            self.preserves_nominal
+        )
+
+    @property
+    def engineering_review_required(
+        self,
+    ) -> bool:
+        """
+        Model Closure Candidate는
+        실제 적용 전에 Engineering Review가 필요하다.
+        """
+
+        return (
+            self.model_closure_candidate
+        )
+
 
 # =========================================================
 # CONSTRAINT VALUE CHECK
@@ -115,6 +151,38 @@ def constraint_passes_state(
     # -----------------------------------------------------
     # DIFFERENCE MIN
     # -----------------------------------------------------
+
+    # -----------------------------------------------------
+    # LOWER BOUND
+    # X >= MIN
+    # -----------------------------------------------------
+
+    if constraint.type == "lower_bound":
+
+        value = state[
+            constraint.variable
+        ]
+
+        return (
+            value
+            >= constraint.min_value
+        )
+
+    # -----------------------------------------------------
+    # UPPER BOUND
+    # X <= MAX
+    # -----------------------------------------------------
+
+    if constraint.type == "upper_bound":
+
+        value = state[
+            constraint.variable
+        ]
+
+        return (
+            value
+            <= constraint.max_value
+        )
 
     if (
         constraint.type
@@ -724,7 +792,14 @@ def evaluate_patch(
     )
 
     # -----------------------------------------------------
-    # PRACTICALITY
+    # MODEL CLOSURE CANDIDATE
+    #
+    # legacy compatibility field:
+    # practical
+    #
+    # 여기서 practical은 제조성/비용을 의미하지 않는다.
+    # 모델 안에서 Escape를 닫고
+    # Nominal State를 보존하는지만 확인한다.
     # -----------------------------------------------------
 
     practical = (
@@ -788,24 +863,56 @@ def evaluate_patch_candidates(
 # SELECT PRACTICAL PATCH
 # =========================================================
 
-def select_practical_patch(
+def select_model_closure_candidate(
     evaluations: list[PatchEvaluation],
 ) -> PatchEvaluation | None:
     """
-    현재 Prototype에서는
-    다음 두 조건을 만족하는 첫 후보를 선택한다.
+    현재 Prototype에서 첫 번째
+    Model Closure Candidate를 선택한다.
 
-    1. Escape 제거
-    2. Nominal State 보존
+    Model Closure Candidate 조건:
 
-    비용이나 검사시간까지 포함한
-    최적화 순위는 아직 수행하지 않는다.
+    1. Patch 입력이 유효함
+    2. Modeled Escape 제거
+    3. Nominal State 보존
+
+    이 판정은 제조 가능성, 비용,
+    공정능력, 검사시간 또는 적용 난이도를
+    평가하지 않는다.
+
+    실제 적용은 별도의
+    Engineering Review가 필요하다.
     """
 
     for evaluation in evaluations:
 
-        if evaluation.practical:
+        if evaluation.model_closure_candidate:
 
             return evaluation
 
     return None
+
+
+# =========================================================
+# LEGACY COMPATIBILITY
+# =========================================================
+
+def select_practical_patch(
+    evaluations: list[PatchEvaluation],
+) -> PatchEvaluation | None:
+    """
+    Backward-compatible wrapper.
+
+    기존 practical이라는 이름은
+    실제 제조성 또는 비용 적합성을
+    의미하지 않는다.
+
+    새 코드는
+    select_model_closure_candidate()
+    사용을 권장한다.
+    """
+
+    return select_model_closure_candidate(
+        evaluations
+    )
+

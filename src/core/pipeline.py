@@ -22,7 +22,7 @@ from src.core.stress_tester import (
 from src.core.patch_engine import (
     PatchEvaluation,
     evaluate_patch_candidates,
-    select_practical_patch,
+    select_model_closure_candidate,
 )
 
 
@@ -86,6 +86,29 @@ class PipelineResult:
 
         return any(
             result.stress_result.escape_found
+            for result
+            in self.requirement_results
+        )
+
+    @property
+    def has_solver_indeterminate(
+        self,
+    ) -> bool:
+        """
+        Requirement 중 하나라도
+        Solver가 결정적인 결과를 내지 못했는지 확인.
+
+        UNKNOWN / timeout을
+        NO ESCAPE로 간주하지 않는다.
+        """
+
+        return any(
+            (
+                result
+                .stress_result
+                .solver_status
+                == "UNKNOWN"
+            )
             for result
             in self.requirement_results
         )
@@ -184,7 +207,7 @@ def run_pipeline(
             )
 
             selected_patch = (
-                select_practical_patch(
+                select_model_closure_candidate(
                     patch_evaluations
                 )
             )
@@ -220,10 +243,39 @@ def run_pipeline(
         in requirement_results
     )
 
+    solver_indeterminate = any(
+        (
+            result
+            .stress_result
+            .solver_status
+            == "UNKNOWN"
+        )
+        for result
+        in requirement_results
+    )
+
+    # -----------------------------------------------------
+    # Confirmed Escape가 있으면
+    # 발견된 Verification Gap을 우선 보존한다.
+    # -----------------------------------------------------
+
     if escape_found:
 
         status = (
             "VERIFICATION_GAP_FOUND"
+        )
+
+    # -----------------------------------------------------
+    # Escape는 없지만 Solver가
+    # 결정적인 답을 주지 못한 경우.
+    #
+    # 절대로 NO_ESCAPE_FOUND로 처리하지 않는다.
+    # -----------------------------------------------------
+
+    elif solver_indeterminate:
+
+        status = (
+            "SOLVER_INDETERMINATE"
         )
 
     else:

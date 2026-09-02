@@ -68,7 +68,18 @@ class StateSpaceEvidence:
 
     no_escape_found: int = 0
 
+    solver_indeterminate_found: bool = False
+
+    solver_indeterminate_count: int = 0
+
     requirement_statuses: dict[
+        str,
+        str,
+    ] = field(
+        default_factory=dict
+    )
+
+    indeterminate_reasons: dict[
         str,
         str,
     ] = field(
@@ -174,6 +185,8 @@ def build_state_space_evidence(
 
     requirement_statuses = {}
 
+    indeterminate_reasons = {}
+
     for requirement_result in (
         pipeline_result.requirement_results
     ):
@@ -181,15 +194,34 @@ def build_state_space_evidence(
             requirement_result.stress_result
         )
 
-        requirement_statuses[
-            stress.requirement_id
-        ] = (
-            "ESCAPE"
-            if stress.escape_found
-            else "NO ESCAPE"
-        )
+        if (
+            stress.solver_status
+            == "UNKNOWN"
+        ):
+            requirement_statuses[
+                stress.requirement_id
+            ] = "INDETERMINATE"
 
-        if not stress.escape_found:
+            indeterminate_reasons[
+                stress.requirement_id
+            ] = (
+                stress.solver_reason
+                or
+                "unknown"
+            )
+
+            continue
+
+        if stress.escape_found:
+            requirement_statuses[
+                stress.requirement_id
+            ] = "ESCAPE"
+
+        else:
+            requirement_statuses[
+                stress.requirement_id
+            ] = "NO ESCAPE"
+
             continue
 
         selected_patch = (
@@ -212,7 +244,7 @@ def build_state_space_evidence(
             )
 
             patch_practical = (
-                selected_patch.practical
+                selected_patch.model_closure_candidate
             )
 
         escapes.append(
@@ -255,9 +287,15 @@ def build_state_space_evidence(
         escapes
     )
 
-    no_escape_found = (
-        requirements_tested
-        - escapes_found
+    solver_indeterminate_count = len(
+        indeterminate_reasons
+    )
+
+    no_escape_found = sum(
+        1
+        for status
+        in requirement_statuses.values()
+        if status == "NO ESCAPE"
     )
 
     return StateSpaceEvidence(
@@ -277,8 +315,17 @@ def build_state_space_evidence(
         no_escape_found=(
             no_escape_found
         ),
+        solver_indeterminate_found=(
+            solver_indeterminate_count > 0
+        ),
+        solver_indeterminate_count=(
+            solver_indeterminate_count
+        ),
         requirement_statuses=(
             requirement_statuses
+        ),
+        indeterminate_reasons=(
+            indeterminate_reasons
         ),
         escapes=escapes,
     )
@@ -394,6 +441,11 @@ def determine_assurance_status(
         state_space.escape_found
     )
 
+    solver_indeterminate = (
+        state_space
+        .solver_indeterminate_found
+    )
+
     verification_risk = (
         method_cross_check
         .verification_risk_found
@@ -430,6 +482,9 @@ def determine_assurance_status(
         return (
             "VERIFICATION_GAP_FOUND"
         )
+
+    if solver_indeterminate:
+        return "INDETERMINATE"
 
     if verification_risk:
         return (
@@ -582,6 +637,16 @@ def render_assurance_report(
             f"{report.state_space.no_escape_found}"
         )
 
+        lines.append(
+            "Solver Indeterminate: "
+            f"{report.state_space.solver_indeterminate_found}"
+        )
+
+        lines.append(
+            "Indeterminate Count : "
+            f"{report.state_space.solver_indeterminate_count}"
+        )
+
         if (
             report
             .state_space
@@ -604,6 +669,30 @@ def render_assurance_report(
             ):
                 lines.append(
                     f"  {requirement_id} : {status}"
+                )
+
+        if (
+            report
+            .state_space
+            .indeterminate_reasons
+        ):
+            lines.append("")
+
+            lines.append(
+                "Indeterminate Solver Results:"
+            )
+
+            for (
+                requirement_id,
+                reason,
+            ) in (
+                report
+                .state_space
+                .indeterminate_reasons
+                .items()
+            ):
+                lines.append(
+                    f"  {requirement_id}: {reason}"
                 )
 
         for escape in (
@@ -652,7 +741,7 @@ def render_assurance_report(
                 is not None
             ):
                 lines.append(
-                    "Selected Patch:"
+                    "Mathematical Patch Candidate:"
                 )
 
                 lines.append(
@@ -662,13 +751,23 @@ def render_assurance_report(
                 )
 
                 lines.append(
-                    "  Closes Escape: "
+                    "  Closes Modeled Escape      : "
                     f"{escape.selected_patch_closes_escape}"
                 )
 
                 lines.append(
-                    "  Practical    : "
+                    "  Model Closure Candidate    : "
                     f"{escape.selected_patch_practical}"
+                )
+
+                lines.append(
+                    "  Engineering Review Required: "
+                    "True"
+                )
+
+                lines.append(
+                    "  External Feasibility Check : "
+                    "NOT PERFORMED"
                 )
 
     lines.append("")

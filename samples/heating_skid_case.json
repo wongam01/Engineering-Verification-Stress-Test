@@ -1,6 +1,5 @@
 {
   "name": "Heating Skid Verification Case",
-
   "variables": {
     "T_in": {
       "unit": "degC",
@@ -8,46 +7,71 @@
       "feasible_min": "75.0",
       "feasible_max": "85.0",
       "verification_min": "75.0",
-      "verification_max": "85.0"
+      "verification_max": "85.0",
+      "feasible_evidence": {
+        "source_type": "engineer_assumption",
+        "source_reference": "Heating Skid synthetic demo case",
+        "approval_status": "approved",
+        "note": "Approved inlet temperature operating envelope for the synthetic demonstration case."
+      }
     },
-
     "T_out": {
       "unit": "degC",
       "nominal": "100.0",
       "feasible_min": "95.0",
       "feasible_max": "105.0",
       "verification_min": "95.0",
-      "verification_max": "105.0"
+      "verification_max": "105.0",
+      "feasible_evidence": {
+        "source_type": "engineer_assumption",
+        "source_reference": "Heating Skid synthetic demo case",
+        "approval_status": "approved",
+        "note": "Approved outlet temperature operating envelope for the synthetic demonstration case."
+      }
     },
-
     "P_out": {
       "unit": "bar",
       "nominal": "4.5",
       "feasible_min": "4.0",
       "feasible_max": "5.2",
       "verification_min": "4.0",
-      "verification_max": "5.0"
+      "verification_max": "5.0",
+      "feasible_evidence": {
+        "source_type": "engineer_assumption",
+        "source_reference": "Heating Skid synthetic demo case",
+        "approval_status": "approved",
+        "note": "Approved outlet pressure operating envelope for the synthetic demonstration case."
+      }
     },
-
     "Flow_A": {
       "unit": "L/min",
       "nominal": "10.0",
       "feasible_min": "8.0",
       "feasible_max": "12.0",
       "verification_min": "8.0",
-      "verification_max": "12.0"
+      "verification_max": "12.0",
+      "feasible_evidence": {
+        "source_type": "engineer_assumption",
+        "source_reference": "Heating Skid synthetic demo case",
+        "approval_status": "approved",
+        "note": "Approved Flow_A operating envelope for the synthetic demonstration case."
+      }
     },
-
     "Flow_B": {
       "unit": "L/min",
       "nominal": "10.0",
       "feasible_min": "8.0",
       "feasible_max": "12.0",
       "verification_min": "8.0",
-      "verification_max": "12.0"
+      "verification_max": "12.0",
+      "feasible_evidence": {
+        "source_type": "engineer_assumption",
+        "source_reference": "Heating Skid synthetic demo case",
+        "approval_status": "approved",
+        "note": "Approved Flow_B operating envelope for the synthetic demonstration case."
+      }
     }
   },
-
   "requirements": [
     {
       "id": "R1",
@@ -58,7 +82,6 @@
       "max": "105.0",
       "description": "출구 온도는 95~105 °C 범위여야 한다."
     },
-
     {
       "id": "R2",
       "type": "difference_min",
@@ -68,7 +91,6 @@
       "min": "20.0",
       "description": "출구 온도는 입구 온도보다 최소 20 °C 높아야 한다."
     },
-
     {
       "id": "R3",
       "type": "range",
@@ -78,7 +100,6 @@
       "max": "4.8",
       "description": "출구 압력은 4.0~4.8 bar 범위여야 한다."
     },
-
     {
       "id": "R4",
       "type": "sum_upper",
@@ -91,6 +112,5 @@
       "description": "Flow_A와 Flow_B의 합은 21 L/min 이하여야 한다."
     }
   ],
-
   "verification_constraints": []
 }

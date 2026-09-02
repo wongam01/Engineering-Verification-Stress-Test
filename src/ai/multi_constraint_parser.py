@@ -1,3 +1,5 @@
+from src.ai.numeric_normalizer import normalize_numeric_contract
+
 import re
 from typing import Literal
 
@@ -24,8 +26,11 @@ class DocumentConstraintItem(
 
     type: Literal[
         "range",
+        "lower_bound",
+        "upper_bound",
         "difference_min",
         "sum_upper",
+        "abs_difference_max",
         "unsupported",
     ]
 
@@ -85,17 +90,33 @@ def prepare_document_lines(
     전체 원문을 연결할 수 있다.
     """
 
-    physical_lines = []
+    # -----------------------------------------------------
+    # PHYSICAL PARAGRAPH PRESERVATION
+    #
+    # Blank lines are meaningful source boundaries.
+    #
+    # 같은 paragraph 내부의 physical line wrapping은
+    # 하나의 paragraph로 유지하지만,
+    # blank line으로 분리된 anonymous paragraph에는
+    # 직전 Requirement ID를 자동 상속하지 않는다.
+    # -----------------------------------------------------
+
+    paragraphs = []
+    current_paragraph = []
 
     for raw_line in text.splitlines():
-
         line = raw_line.strip()
 
         if not line:
+            if current_paragraph:
+                paragraphs.append(
+                    current_paragraph
+                )
+                current_paragraph = []
             continue
 
         # [DESIGN SPECIFICATION] 같은
-        # Section Heading 제외
+        # bracket-only Section Heading은 제외한다.
         if (
             line.startswith("[")
             and
@@ -103,11 +124,16 @@ def prepare_document_lines(
         ):
             continue
 
-        physical_lines.append(
+        current_paragraph.append(
             line
         )
 
-    if not physical_lines:
+    if current_paragraph:
+        paragraphs.append(
+            current_paragraph
+        )
+
+    if not paragraphs:
         return "", {}
 
     # -----------------------------------------------------
@@ -117,58 +143,252 @@ def prepare_document_lines(
     # R2:
     # V1.
     # V12)
+    # REQ 10:
+    # a. [ABC 18]
+    # (1) [ABC 29]
     # 등을 인식
     # -----------------------------------------------------
 
     constraint_start_pattern = re.compile(
-        r"^[A-Za-z]+\d+\s*[\.\:\)]"
+        r"^(?:"
+        r"[A-Za-z]+\d+\s*[.:)]"
+        r"|[A-Z][A-Z0-9_-]{1,15}\s+\d+\s*[.:)]"
+        r"|(?:(?:"
+        r"[A-Za-z]\s*[.)]"
+        r"|\(\d+\)"
+        r"|\d+\s*[.)]"
+        r")\s*)?"
+        r"\[[A-Z][A-Z0-9_-]{1,15}\s+\d+\]"
+        r")"
     )
+
+    # -----------------------------------------------------
+    # LOGICAL BLOCK BUILDING
+    #
+    # 핵심 계약:
+    #
+    # 1. 같은 paragraph의 줄바꿈은 이어 붙인다.
+    # 2. explicit ID가 나타나면 새 constraint block.
+    # 3. blank-separated anonymous paragraph는
+    #    독립 block으로 유지한다.
+    # 4. 따라서 anonymous paragraph가 직전
+    #    Requirement ID를 강제로 상속하지 않는다.
+    # -----------------------------------------------------
 
     logical_blocks = []
 
-    current_block = []
+    for paragraph in paragraphs:
+        paragraph_blocks = []
+        current_block = []
 
-    for line in physical_lines:
-
-        starts_new_constraint = bool(
-            constraint_start_pattern.match(
-                line
-            )
-        )
-
-        if starts_new_constraint:
-
-            if current_block:
-
-                logical_blocks.append(
-                    current_block
-                )
-
-            current_block = [
-                line
-            ]
-
-        else:
-
-            if current_block:
-
-                # 이전 Requirement의 계속 문장
-                current_block.append(
+        for line in paragraph:
+            starts_new_constraint = bool(
+                constraint_start_pattern.match(
                     line
                 )
+            )
 
-            else:
+            if starts_new_constraint:
+                if current_block:
+                    paragraph_blocks.append(
+                        current_block
+                    )
 
-                # ID 없는 독립 문장
                 current_block = [
                     line
                 ]
 
-    if current_block:
+            else:
+                if current_block:
+                    current_block.append(
+                        line
+                    )
+                else:
+                    current_block = [
+                        line
+                    ]
 
-        logical_blocks.append(
-            current_block
+        if current_block:
+            paragraph_blocks.append(
+                current_block
+            )
+
+        logical_blocks.extend(
+            paragraph_blocks
         )
+
+    # -----------------------------------------------------
+    # SYNTHETIC PDF PAGE-BOUNDARY BRIDGE
+    #
+    # PDF text extraction 과정에서 삽입된
+    #
+    # ===== PDF PAGE N =====
+    #
+    # 경계 때문에 하나의 Requirement가
+    # 인위적으로 끊어지는 것을 방지한다.
+    #
+    # 단:
+    # - 직전 block이 explicit constraint이고
+    # - 직전 문장이 terminal punctuation 없이
+    #   페이지 끝에서 끊긴 경우에만 연결한다.
+    #
+    # 일반 blank-separated anonymous paragraph는
+    # 계속 독립 attribution block으로 유지한다.
+    #
+    # Page marker / header text는 삭제하지 않고
+    # source traceability를 위해 source block에 보존한다.
+    # -----------------------------------------------------
+
+    page_marker_pattern = re.compile(
+        r"^===== PDF PAGE \d+ =====$"
+    )
+
+    page_count_pattern = re.compile(
+        r"^(?:Page\s+)?"
+        r"\d+\s*(?:of|/)\s*\d+$",
+        re.IGNORECASE,
+    )
+
+    terminal_punctuation = (
+        ".",
+        "?",
+        "!",
+    )
+
+    merged_logical_blocks = []
+
+    block_index = 0
+
+    while block_index < len(
+        logical_blocks
+    ):
+        block = logical_blocks[
+            block_index
+        ]
+
+        is_page_marker_block = bool(
+            block
+            and
+            page_marker_pattern.match(
+                block[0]
+            )
+        )
+
+        if (
+            is_page_marker_block
+            and
+            merged_logical_blocks
+        ):
+            previous_block = (
+                merged_logical_blocks[-1]
+            )
+
+            previous_is_explicit = bool(
+                previous_block
+                and
+                constraint_start_pattern.match(
+                    previous_block[0]
+                )
+            )
+
+            previous_last_line = (
+                previous_block[-1].rstrip()
+                if previous_block
+                else ""
+            )
+
+            previous_is_incomplete = bool(
+                previous_last_line
+                and
+                not previous_last_line.endswith(
+                    terminal_punctuation
+                )
+            )
+
+            if (
+                previous_is_explicit
+                and
+                previous_is_incomplete
+            ):
+                # Page marker block 자체도
+                # traceability를 위해 보존한다.
+                previous_block.extend(
+                    block
+                )
+
+                page_count_seen = any(
+                    page_count_pattern.match(
+                        line.strip()
+                    )
+                    for line in block
+                )
+
+                block_index += 1
+
+                # Page header / page count /
+                # 이어지는 semantic continuation을
+                # 다음 explicit constraint 직전까지 검사한다.
+                while block_index < len(
+                    logical_blocks
+                ):
+                    next_block = (
+                        logical_blocks[
+                            block_index
+                        ]
+                    )
+
+                    next_is_explicit = bool(
+                        next_block
+                        and
+                        constraint_start_pattern.match(
+                            next_block[0]
+                        )
+                    )
+
+                    if next_is_explicit:
+                        break
+
+                    previous_block.extend(
+                        next_block
+                    )
+
+                    if any(
+                        page_count_pattern.match(
+                            line.strip()
+                        )
+                        for line in next_block
+                    ):
+                        page_count_seen = True
+
+                    block_index += 1
+
+                    # Page count를 지난 뒤
+                    # 실제 continuation이 완전한 문장으로
+                    # 종료되면 bridge를 끝낸다.
+                    if (
+                        page_count_seen
+                        and
+                        previous_block
+                        and
+                        previous_block[-1]
+                        .rstrip()
+                        .endswith(
+                            terminal_punctuation
+                        )
+                    ):
+                        break
+
+                continue
+
+        merged_logical_blocks.append(
+            block
+        )
+
+        block_index += 1
+
+    logical_blocks = (
+        merged_logical_blocks
+    )
 
     # -----------------------------------------------------
     # L1, L2 ... 논리 ID 부여
@@ -287,6 +507,35 @@ def normalize_constraint(
 
             data["max"] = None
 
+    # -----------------------------------------------------
+    # abs_difference_max
+    #
+    # Core 규칙:
+    # |left - right| <= limit
+    # -----------------------------------------------------
+
+    if (
+        constraint_type
+        == "abs_difference_max"
+    ):
+
+        if (
+            data.get("limit") is None
+            and
+            data.get("max") is not None
+        ):
+
+            data["limit"] = (
+                data["max"]
+            )
+
+            data["max"] = None
+
+
+    data = normalize_numeric_contract(
+        data
+    )
+
     return data
 
 
@@ -349,7 +598,77 @@ min = 95
 max = 105
 
 
-2. difference_min
+2. lower_bound
+
+하나의 변수에 대한 최소 허용값입니다.
+
+수학적 형태:
+
+X >= min
+
+예:
+
+Pressure >= 4 bar
+
+반드시 다음 필드를 사용하십시오.
+
+type = lower_bound
+
+variable = Pressure
+
+min = 4
+
+중요:
+
+lower_bound의 기준값은 반드시 min 필드에 넣으십시오.
+
+max 또는 limit 필드를 사용하지 마십시오.
+
+
+3. upper_bound
+
+하나의 변수에 대한 최대 허용값입니다.
+
+수학적 형태:
+
+X <= max
+
+예:
+
+Pressure <= 6 bar
+
+반드시 다음 필드를 사용하십시오.
+
+type = upper_bound
+
+variable = Pressure
+
+max = 6
+
+중요:
+
+upper_bound의 기준값은 반드시 max 필드에 넣으십시오.
+
+min 또는 limit 필드를 사용하지 마십시오.
+
+
+
+Numeric field contract:
+
+- min, max, limit에는 반드시 단일 numeric literal만 넣으십시오.
+- 일반 decimal 또는 scientific notation을 사용하십시오.
+  예: 5, 3.25, 1e-6
+- 원문이 1x10-6, 1×10^-6처럼 명확한 scientific notation이면
+  숫자 의미를 유지하십시오.
+- 다른 engineering quantity와의 관계식은 단일 숫자가 아닙니다.
+  예: X >= 1.5 × reference_value
+- 이런 관계식을 min/max/limit에 문자열로 넣지 마십시오.
+- 현재 지원 schema로 의미를 손실 없이 표현할 수 없다면
+  type = unsupported,
+  needs_review = true 로 반환하십시오.
+- 관계식을 임의의 scalar 값으로 축약하지 마십시오.
+
+4. difference_min
 
 예:
 T_out - T_in >= 20
@@ -368,7 +687,7 @@ difference_min의 기준값은
 limit 필드를 사용하지 마십시오.
 
 
-3. sum_upper
+5. sum_upper
 
 예:
 Flow_A + Flow_B <= 21
@@ -383,6 +702,50 @@ limit = 21
 sum_upper의 상한값은
 반드시 limit 필드에 넣으십시오.
 
+
+
+6. abs_difference_max
+
+두 변수 사이의 방향과 무관한
+절대 차이의 최대 허용값입니다.
+
+수학적 형태:
+
+|A - B| <= limit
+
+예:
+
+Zone A와 Zone B의 온도차는
+4 degC를 초과해서는 안 된다.
+
+또는:
+
+The temperature difference between
+Zone A and Zone B shall not exceed 4 degC.
+
+반드시 다음 필드를 사용하십시오.
+
+type = abs_difference_max
+
+left = Zone A
+
+right = Zone B
+
+limit = 4
+
+중요:
+
+abs_difference_max에서는
+left와 right 두 변수를 사용하십시오.
+
+상한값은 반드시 limit 필드에 넣으십시오.
+
+min 또는 max 필드를
+threshold 저장용으로 사용하지 마십시오.
+
+"Y는 X보다 최소 20 높아야 한다"처럼
+방향이 명확한 조건은
+difference_min으로 분류하십시오.
 
 규칙:
 

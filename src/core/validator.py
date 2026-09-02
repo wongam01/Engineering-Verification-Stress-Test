@@ -41,9 +41,10 @@ class ValidationResult:
 
 SUPPORTED_TYPES = {
     "range",
+    "lower_bound",
+    "upper_bound",
     "difference_min",
     "sum_upper",
-
     "abs_difference_max",
 }
 
@@ -314,6 +315,100 @@ def validate_constraint(
             )
 
     # -----------------------------------------------------
+    # -----------------------------------------------------
+
+    # LOWER BOUND
+
+    # -----------------------------------------------------
+
+    elif constraint.type == "lower_bound":
+
+        if constraint.variable is None:
+
+            issues.append(
+
+                ValidationIssue(
+
+                    location=location,
+
+                    message=(
+
+                        "lower_bound Constraint에 "
+                        "variable이 없습니다."
+
+                    ),
+
+                )
+
+            )
+
+        if constraint.min_value is None:
+
+            issues.append(
+
+                ValidationIssue(
+
+                    location=location,
+
+                    message=(
+
+                        "lower_bound Constraint에 "
+                        "min 값이 없습니다."
+
+                    ),
+
+                )
+
+            )
+
+    # -----------------------------------------------------
+
+    # UPPER BOUND
+
+    # -----------------------------------------------------
+
+    elif constraint.type == "upper_bound":
+
+        if constraint.variable is None:
+
+            issues.append(
+
+                ValidationIssue(
+
+                    location=location,
+
+                    message=(
+
+                        "upper_bound Constraint에 "
+                        "variable이 없습니다."
+
+                    ),
+
+                )
+
+            )
+
+        if constraint.max_value is None:
+
+            issues.append(
+
+                ValidationIssue(
+
+                    location=location,
+
+                    message=(
+
+                        "upper_bound Constraint에 "
+                        "max 값이 없습니다."
+
+                    ),
+
+                )
+
+            )
+
+    # -----------------------------------------------------
+
     # DIFFERENCE MIN
     # -----------------------------------------------------
 

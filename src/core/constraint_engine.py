@@ -211,6 +211,70 @@ def build_range_requirement(
 
 
 # =========================================================
+# LOWER BOUND
+# =========================================================
+
+def build_lower_bound_requirement(
+    requirement: RequirementSpec,
+    z3_variables: Z3VariableSet,
+) -> RequirementExpression:
+
+    variable = z3_variables.get(
+        requirement.variable
+    )
+
+    minimum = z3_value(
+        requirement.min_value
+    )
+
+    return RequirementExpression(
+        requirement_id=requirement.id,
+        requirement_type=requirement.type,
+        pass_condition=(
+            variable >= minimum
+        ),
+        fail_condition=(
+            variable < minimum
+        ),
+        measured_expression=variable,
+        limit_value=requirement.min_value,
+        violation_direction="lower",
+    )
+
+
+# =========================================================
+# UPPER BOUND
+# =========================================================
+
+def build_upper_bound_requirement(
+    requirement: RequirementSpec,
+    z3_variables: Z3VariableSet,
+) -> RequirementExpression:
+
+    variable = z3_variables.get(
+        requirement.variable
+    )
+
+    maximum = z3_value(
+        requirement.max_value
+    )
+
+    return RequirementExpression(
+        requirement_id=requirement.id,
+        requirement_type=requirement.type,
+        pass_condition=(
+            variable <= maximum
+        ),
+        fail_condition=(
+            variable > maximum
+        ),
+        measured_expression=variable,
+        limit_value=requirement.max_value,
+        violation_direction="upper",
+    )
+
+
+# =========================================================
 # DIFFERENCE MIN
 # =========================================================
 
@@ -418,6 +482,28 @@ def build_requirement_expression(
 
         return (
             build_range_requirement(
+                requirement,
+                z3_variables,
+            )
+        )
+
+    if (
+        requirement.type
+        == "lower_bound"
+    ):
+        return (
+            build_lower_bound_requirement(
+                requirement,
+                z3_variables,
+            )
+        )
+
+    if (
+        requirement.type
+        == "upper_bound"
+    ):
+        return (
+            build_upper_bound_requirement(
                 requirement,
                 z3_variables,
             )

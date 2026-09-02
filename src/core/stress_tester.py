@@ -19,6 +19,13 @@ from src.core.constraint_engine import (
 )
 
 
+from src.core.solver_control import (
+    SolverIndeterminateError,
+    check_optimizer_decisive,
+    create_optimizer,
+)
+
+
 # =========================================================
 # RESULT MODEL
 # =========================================================
@@ -44,6 +51,10 @@ class StressTestResult:
     actual_value: float | None = None
 
     direction: str | None = None
+
+    solver_status: str = "SOLVED"
+
+    solver_reason: str | None = None
 
 
 # =========================================================
@@ -165,7 +176,7 @@ def stress_test_range(
         ),
     )
 
-    optimizer = Optimize()
+    optimizer = create_optimizer()
 
     add_common_constraints(
         optimizer,
@@ -193,7 +204,7 @@ def stress_test_range(
         violation
     )
 
-    if optimizer.check() == sat:
+    if check_optimizer_decisive(optimizer) == sat:
 
         model = optimizer.model()
 
@@ -241,7 +252,7 @@ def stress_test_range(
         ),
     )
 
-    optimizer = Optimize()
+    optimizer = create_optimizer()
 
     add_common_constraints(
         optimizer,
@@ -269,7 +280,7 @@ def stress_test_range(
         violation
     )
 
-    if optimizer.check() == sat:
+    if check_optimizer_decisive(optimizer) == sat:
 
         model = optimizer.model()
 
@@ -352,7 +363,7 @@ def stress_test_difference(
         ),
     )
 
-    optimizer = Optimize()
+    optimizer = create_optimizer()
 
     add_common_constraints(
         optimizer,
@@ -387,7 +398,7 @@ def stress_test_difference(
         violation
     )
 
-    if optimizer.check() != sat:
+    if check_optimizer_decisive(optimizer) != sat:
 
         return StressTestResult(
             requirement_id=requirement.id,
@@ -468,7 +479,7 @@ def stress_test_abs_difference_max(
     )
 
 
-    optimizer = Optimize()
+    optimizer = create_optimizer()
 
 
     add_common_constraints(
@@ -535,7 +546,7 @@ def stress_test_abs_difference_max(
     )
 
 
-    if optimizer.check() != sat:
+    if check_optimizer_decisive(optimizer) != sat:
 
         return StressTestResult(
 
@@ -629,7 +640,7 @@ def stress_test_sum_upper(
         ),
     )
 
-    optimizer = Optimize()
+    optimizer = create_optimizer()
 
     add_common_constraints(
         optimizer,
@@ -664,7 +675,7 @@ def stress_test_sum_upper(
         violation
     )
 
-    if optimizer.check() != sat:
+    if check_optimizer_decisive(optimizer) != sat:
 
         return StressTestResult(
             requirement_id=requirement.id,
@@ -706,6 +717,122 @@ def stress_test_sum_upper(
 
 
 # =========================================================
+# ONE-SIDED BOUND STRESS TEST
+# =========================================================
+
+def stress_test_one_sided_bound(
+    case: EngineeringCase,
+    requirement: RequirementSpec,
+) -> StressTestResult:
+
+    z3_variables = create_z3_variables(
+        case,
+        prefix=f"stress_{requirement.id}",
+    )
+
+    optimizer = create_optimizer()
+
+    add_common_constraints(
+        optimizer,
+        case,
+        z3_variables,
+    )
+
+    requirement_expression = (
+        build_requirement_expression(
+            requirement,
+            z3_variables,
+        )
+    )
+
+    optimizer.add(
+        requirement_expression.fail_condition
+    )
+
+    expression = (
+        requirement_expression.measured_expression
+    )
+
+    if requirement.type == "lower_bound":
+
+        limit = z3_value(
+            requirement.min_value
+        )
+
+        violation = (
+            limit - expression
+        )
+
+        direction = "below_minimum"
+
+    elif requirement.type == "upper_bound":
+
+        limit = z3_value(
+            requirement.max_value
+        )
+
+        violation = (
+            expression - limit
+        )
+
+        direction = "above_maximum"
+
+    else:
+
+        raise ValueError(
+            "stress_test_one_sided_bound received "
+            f"unsupported type: {requirement.type}"
+        )
+
+    optimizer.maximize(
+        violation
+    )
+
+    if check_optimizer_decisive(optimizer) != sat:
+
+        return StressTestResult(
+            requirement_id=requirement.id,
+            requirement_type=requirement.type,
+            escape_found=False,
+        )
+
+    model = optimizer.model()
+
+    state = extract_state(
+        model,
+        z3_variables,
+    )
+
+    actual = state[
+        requirement.variable
+    ]
+
+    if requirement.type == "lower_bound":
+
+        violation_value = (
+            float(requirement.min_value)
+            - actual
+        )
+
+    else:
+
+        violation_value = (
+            actual
+            - float(requirement.max_value)
+        )
+
+    return StressTestResult(
+        requirement_id=requirement.id,
+        requirement_type=requirement.type,
+        escape_found=True,
+        worst_violation=violation_value,
+        state=state,
+        actual_value=actual,
+        direction=direction,
+    )
+
+
+# =========================================================
 # GENERIC REQUIREMENT STRESS TEST
 # =========================================================
 
@@ -717,6 +844,15 @@ def stress_test_requirement(
     Requirement Type에 따라
     적절한 Stress Test를 실행한다.
     """
+
+    if requirement.type in {
+        "lower_bound",
+        "upper_bound",
+    }:
+        return stress_test_one_sided_bound(
+            case,
+            requirement,
+        )
 
     if requirement.type == "range":
 
@@ -774,17 +910,41 @@ def stress_test_case(
     """
     EngineeringCase 안의 모든 Requirement를
     각각 Stress Test한다.
+
+    Solver가 timeout / unknown이면
+    NO ESCAPE로 처리하지 않고
+    UNKNOWN 결과를 보존한다.
     """
 
     results = []
 
     for requirement in case.requirements:
 
-        results.append(
-            stress_test_requirement(
+        try:
+            result = stress_test_requirement(
                 case,
                 requirement,
             )
+
+        except SolverIndeterminateError as exc:
+
+            result = StressTestResult(
+                requirement_id=(
+                    requirement.id
+                ),
+                requirement_type=(
+                    requirement.type
+                ),
+                escape_found=False,
+                solver_status="UNKNOWN",
+                solver_reason=(
+                    exc.reason
+                ),
+            )
+
+        results.append(
+            result
         )
 
     return results
+

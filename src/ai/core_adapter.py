@@ -1,5 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass
+from decimal import Decimal
 
 from src.core.models import (
     EngineeringCase,
@@ -28,6 +29,204 @@ class AIConstraintAdapterResult:
     source_text: str
 
     message: str
+
+
+
+# =========================================================
+# DETERMINISTIC AI EXTRACTION GUARD
+# =========================================================
+
+def validate_ai_extraction_structure(
+    extraction: dict,
+) -> tuple[bool, str]:
+
+    """
+    LLM이 needs_review=False라고 반환하더라도
+    Constraint Type에 필요한 핵심 Field가
+    실제로 존재하는지 결정론적으로 확인한다.
+
+    여기서는 AI 출력 자체의 구조만 검사한다.
+
+    존재하지 않는 Engineering Variable,
+    Unit 관계, Feasible Domain 등은
+    Core Validator의 책임이다.
+    """
+
+    constraint_type = extraction.get(
+        "type"
+    )
+
+    # -----------------------------------------------------
+    # RANGE
+    # -----------------------------------------------------
+
+    if constraint_type == "range":
+
+        required = {
+            "variable": extraction.get("variable"),
+            "min": extraction.get("min"),
+            "max": extraction.get("max"),
+        }
+
+    # -----------------------------------------------------
+    # DIFFERENCE MIN
+    # -----------------------------------------------------
+
+    elif constraint_type == "lower_bound":
+
+        required = {
+
+            "variable": extraction.get("variable"),
+
+            "min": extraction.get("min"),
+
+        }
+
+    elif constraint_type == "upper_bound":
+
+        required = {
+
+            "variable": extraction.get("variable"),
+
+            "max": extraction.get("max"),
+
+        }
+
+    elif constraint_type == "difference_min":
+
+        required = {
+            "left": extraction.get("left"),
+            "right": extraction.get("right"),
+            "min": extraction.get("min"),
+        }
+
+    # -----------------------------------------------------
+    # SUM UPPER
+    # -----------------------------------------------------
+
+    elif constraint_type == "sum_upper":
+
+        variables = extraction.get(
+            "variables"
+        )
+
+        if not variables:
+
+            return (
+                False,
+                "sum_upper Constraint에 "
+                "variables가 없습니다.",
+            )
+
+        required = {
+            "limit": extraction.get("limit"),
+        }
+
+    # -----------------------------------------------------
+    # ABS DIFFERENCE MAX
+    # -----------------------------------------------------
+
+    elif constraint_type == "abs_difference_max":
+
+        required = {
+            "left": extraction.get("left"),
+            "right": extraction.get("right"),
+            "limit": extraction.get("limit"),
+        }
+
+    else:
+
+        return (
+            True,
+            "",
+        )
+
+
+    # -----------------------------------------------------
+    # REQUIRED FIELD CHECK
+    # -----------------------------------------------------
+
+    for field_name, value in required.items():
+
+        if value is None:
+
+            return (
+                False,
+                (
+                    f"{constraint_type} Constraint에 "
+                    f"{field_name} 값이 없습니다."
+                ),
+            )
+
+
+    # -----------------------------------------------------
+    # NUMERIC FORMAT CHECK
+    # -----------------------------------------------------
+
+    numeric_fields = [
+        "min",
+        "max",
+        "limit",
+    ]
+
+    for field_name in numeric_fields:
+
+        value = extraction.get(
+            field_name
+        )
+
+        if value is None:
+
+            continue
+
+        try:
+
+            Decimal(
+                str(value)
+            )
+
+        except Exception:
+
+            return (
+                False,
+                (
+                    f"{constraint_type} Constraint의 "
+                    f"{field_name} 값이 숫자가 아닙니다: "
+                    f"{value}"
+                ),
+            )
+
+
+    # -----------------------------------------------------
+    # ABS DIFFERENCE LIMIT
+    # -----------------------------------------------------
+
+    if (
+        constraint_type
+        == "abs_difference_max"
+    ):
+
+        limit = Decimal(
+            str(
+                extraction["limit"]
+            )
+        )
+
+        if limit < 0:
+
+            return (
+                False,
+                (
+                    "abs_difference_max Constraint의 "
+                    "limit은 음수일 수 없습니다."
+                ),
+            )
+
+
+    return (
+        True,
+        "",
+    )
 
 
 # =========================================================
@@ -134,6 +333,31 @@ def convert_ai_constraint(
         )
 
     # -----------------------------------------------------
+    # DETERMINISTIC STRUCTURE GUARD
+    # -----------------------------------------------------
+
+    structure_valid, structure_message = (
+        validate_ai_extraction_structure(
+            extraction
+        )
+    )
+
+    if not structure_valid:
+
+        return AIConstraintAdapterResult(
+            accepted=False,
+            constraint_role=role,
+            constraint=None,
+            source_name=source_name,
+            source_text=source_text,
+            message=(
+                "AI Constraint 구조 검증 실패: "
+                + structure_message
+            ),
+        )
+
+
+    # -----------------------------------------------------
     # CORE DATA
     # -----------------------------------------------------
 
@@ -177,6 +401,42 @@ def convert_ai_constraint(
     # DIFFERENCE MIN
     # =====================================================
 
+    elif constraint_type == "lower_bound":
+
+        core_data.update(
+
+            {
+
+                "variable": extraction[
+                    "variable"
+                ],
+
+                "min": extraction[
+                    "min"
+                ],
+
+            }
+
+        )
+
+    elif constraint_type == "upper_bound":
+
+        core_data.update(
+
+            {
+
+                "variable": extraction[
+                    "variable"
+                ],
+
+                "max": extraction[
+                    "max"
+                ],
+
+            }
+
+        )
+
     elif (
         constraint_type
         == "difference_min"
@@ -201,6 +461,34 @@ def convert_ai_constraint(
     # =====================================================
     # SUM UPPER
     # =====================================================
+
+    # =====================================================
+    # ABSOLUTE DIFFERENCE MAX
+    #
+    # |left - right| <= limit
+    # =====================================================
+
+    elif (
+        constraint_type
+        == "abs_difference_max"
+    ):
+
+        core_data.update(
+            {
+                "left": extraction[
+                    "left"
+                ],
+
+                "right": extraction[
+                    "right"
+                ],
+
+                "limit": extraction[
+                    "limit"
+                ],
+            }
+        )
+
 
     elif constraint_type == "sum_upper":
 

@@ -190,6 +190,22 @@ def build_requirement_description(
             f"{requirement.unit}"
         )
 
+    if requirement.type == "lower_bound":
+        return (
+            f"{requirement.id}: "
+            f"{requirement.variable} >= "
+            f"{requirement.min_value} "
+            f"{requirement.unit}"
+        )
+
+    if requirement.type == "upper_bound":
+        return (
+            f"{requirement.id}: "
+            f"{requirement.variable} <= "
+            f"{requirement.max_value} "
+            f"{requirement.unit}"
+        )
+
     if (
         requirement.type
         == "difference_min"
