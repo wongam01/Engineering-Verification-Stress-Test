@@ -1,0 +1,43 @@
+{
+  "case_id": "FORD-NANO-INTAKE-VALVE-HARDNESS-TEST-02B",
+  "test_type": "REAL_NUMERIC_ACCEPTANCE_STATE_SPACE_GAP",
+  "closure_status": "CLOSED_PASS",
+  "run": {
+    "run_id": "RUN_01_FIRST_OFFICIAL_CORE_SOLVER",
+    "pre_solver_commit": "705b09a28cdfa4e5f324b788e5726e6eb6003bde",
+    "solver_status": "SOLVED",
+    "observed_existence_status": "SAT",
+    "escape_found": true,
+    "witness": {
+      "H": 60.0,
+      "unit": "HRC"
+    },
+    "direction": "above_maximum",
+    "worst_violation": 3.0,
+    "worst_violation_unit": "HRC"
+  },
+  "frozen_reference": {
+    "expected_status": "SAT",
+    "exact_witness_preselected": null,
+    "reference_sha256": "784727ca8e7b96995fee5d3b872f96b360f899d786828a902256ca73a06bfe16",
+    "case_sha256": "2c78b78ca45ecf6db1cbbe9d17e90eb3c83e1866162cfb232ff1bb46d14cdbb8"
+  },
+  "witness_checks": {
+    "F_obs": "PASS",
+    "V_old": "PASS",
+    "R": "FAIL",
+    "not_R": "PASS",
+    "expected_witness_class": "PASS"
+  },
+  "comparison": {
+    "result": "PASS",
+    "expected": "SAT",
+    "observed": "SAT"
+  },
+  "evidence": {
+    "solver_output_file": "prototype/run_01_solver_output.txt",
+    "solver_output_sha256": "c7ff8ebc2d59d4e6071940f4bfc0422475b8887120d1b4a35e6b1547e4c09e9d"
+  },
+  "interpretation_guardrail": "Closure establishes SAT for the frozen source-grounded formal model. It does not claim that every 58-60 HRC valve actually passed historical production inspection.",
+  "solver_rerun_for_closure": false
+}

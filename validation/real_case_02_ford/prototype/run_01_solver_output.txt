@@ -1,0 +1,45 @@
+FORD TEST #2B — FIRST OFFICIAL CORE SOLVER RUN
+================================================
+PRE-SOLVER COMMIT:
+705b09a28cdfa4e5f324b788e5726e6eb6003bde
+
+REFERENCE SHA256:
+784727ca8e7b96995fee5d3b872f96b360f899d786828a902256ca73a06bfe16
+
+CASE SHA256:
+2c78b78ca45ecf6db1cbbe9d17e90eb3c83e1866162cfb232ff1bb46d14cdbb8
+
+FROZEN EXPECTED:
+SAT
+Exact witness preselected: None
+
+===== SOLVER EXECUTION START =====
+===== SOLVER EXECUTION END =====
+
+CORE RESULT
+-----------
+solver_status: SOLVED
+escape_found: True
+requirement_id: R_HARDNESS
+requirement_type: range
+state: {'H': 60.0}
+actual_value: 60.0
+direction: above_maximum
+worst_violation: 3.0
+
+OBSERVED EXISTENCE STATUS: SAT
+
+FROZEN WITNESS CHECK
+--------------------
+H: 60.0
+F_obs: PASS
+V_old: PASS
+R: FAIL
+NOT R: PASS
+Expected witness class: PASS
+
+FINAL FROZEN-REFERENCE COMPARISON
+---------------------------------
+Expected status: SAT
+Observed status: SAT
+RESULT: PASS
