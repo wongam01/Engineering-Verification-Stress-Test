@@ -1,0 +1,213 @@
+{
+  "reference_metadata": {
+    "schema_version": 1,
+    "case_id": "FORD-NANO-INTAKE-VALVE-HARDNESS-TEST-02B",
+    "case_name": "Ford Nano 2.7L/3.0L EcoBoost Intake Valve Hardness",
+    "validation_test": "Test #2B",
+    "status": "FROZEN_REFERENCE_V1",
+    "case_type": "REAL_NUMERIC_ACCEPTANCE_STATE_SPACE_GAP",
+    "prototype_output_used_to_define_case": false,
+    "solver_executed_before_reference_definition": false,
+    "solver_output_available_during_reference_definition": false,
+    "note": "Frozen source-grounded Ford Test #2B reference created before solver execution. The expected solver result and witness class were defined in the hashed pre-freeze input.",
+    "frozen_at_utc": "2026-09-06T07:31:54.012845+00:00",
+    "reference_input_file": "validation/real_case_02_ford/reference/reference_input_v1.json",
+    "reference_input_sha256": "00ddee64b1e5faf7a302c5f8d7dd2b5020c75c248c62b6db82959ddcd0c66ab5",
+    "source_integrity_verified": true,
+    "solver_executed_before_freeze": false
+  },
+  "variable": {
+    "symbol": "H",
+    "unit": "HRC",
+    "meaning": "Hardness value associated with the drawing-controlled valve-tip hardened zone and the documented SCCAF Tip Hardness characteristic.",
+    "measurement_alignment_note": "Historical SCCAF production control used Rockwell C indentation on the valve tip. Ford Central Laboratory later measured Vickers microindentation hardness on a metallographic section and converted those values to Rockwell C according to ASTM E140. The laboratory measurements are evidence of physically observed hardness states, not historical production inspection records."
+  },
+  "sources": [
+    {
+      "source_id": "FORD_REQUEST_15_SCCAF",
+      "file": "validation/real_case_02_ford/source/INRL-EA23002-13503.pdf",
+      "sha256": "8db86ffe5a7d79ecfbcfdc86f9b9f49b672efc86b059a22d483fe18dc37cf924",
+      "roles": [
+        "HISTORICAL_VERIFICATION_CRITERION",
+        "PROCESS_CONTROL_CHRONOLOGY"
+      ],
+      "evidence": [
+        {
+          "page": 2,
+          "supports": "Historical SCCAF Tip Hardness specification was 50 min HRC, using a Rockwell Hardness Tester, with sampling at start of shift and tool change/changeover."
+        },
+        {
+          "page": 5,
+          "supports": "Ford states that the SCCAF did not detail an upper tolerance limit for valve tip hardness until September 7, 2021."
+        }
+      ]
+    },
+    {
+      "source_id": "FORD_NANO_VALVE_FAILURE_REVIEW",
+      "file": "validation/real_case_02_ford/source/INRD-EA23002-13504P1.pdf",
+      "sha256": "4ecef296835ee1cc2f48cf5a1cc6ef1ea0b223d82636d22e8b076ea64986dd2d",
+      "roles": [
+        "ENGINEERING_REQUIREMENT_CHRONOLOGY"
+      ],
+      "evidence": [
+        {
+          "page": 6,
+          "supports": "JT4E-6507-AB launched with a tip-hardness specification of 50 MIN and the tip-hardness specification changed to 50-57 HRC in October 2020."
+        }
+      ]
+    },
+    {
+      "source_id": "EATON_8D",
+      "file": "validation/real_case_02_ford/source/INRD-EA23002-13506.pdf",
+      "sha256": "156b4cc96c90f772492c19c04e6c892f1b1d81326bec2b4b40f89ff09109186a",
+      "roles": [
+        "FIELD_FAILURE_CORROBORATION",
+        "SECONDARY_REPRESENTATIVENESS_GAP"
+      ],
+      "evidence": [
+        {
+          "page": 1,
+          "supports": "Field-failure valves were reported with hardness above the maximum 57 HRC specification, including measurements described in the 58-60 HRC range near the keeper-groove region."
+        },
+        {
+          "page": 5,
+          "supports": "Historical hardness verification was performed only on the valve tip; profile and keeper-groove hardness verification were subsequently added."
+        },
+        {
+          "page": 6,
+          "supports": "The investigation records the belief that measured tip hardness represented the rest of the tip-hardened zone; this finding is excluded from the primary one-variable acceptance-boundary model."
+        }
+      ]
+    },
+    {
+      "source_id": "FORD_CENTRAL_LAB_US231121",
+      "file": "validation/real_case_02_ford/source/INRD-EA23002-13508P1.pdf",
+      "sha256": "aecc95efd9359bda84df52583d507424215446ab1b997147f4f5abf4f9021c3d",
+      "roles": [
+        "ENGINEERING_REQUIREMENT",
+        "OBSERVED_FEASIBLE_HARDNESS",
+        "FRACTURED_HARDWARE"
+      ],
+      "evidence": [
+        {
+          "page": 2,
+          "supports": "Ford Central Laboratory report US231121 analyzes two fractured intake valves, including Intake Valve 10, from warranty-return vehicles."
+        },
+        {
+          "page": 4,
+          "supports": "The report states that Ford Drawing JT4E-6507-AB specifies 50-57 HRC in the applicable hardened region and reports Intake Valve 10 measurements including 58, 59, and 60 HRC, with out-of-specification markings."
+        },
+        {
+          "page": 5,
+          "supports": "The core hardness traverse for Intake Valve 10 also contains values above the 57 HRC upper specification."
+        }
+      ]
+    }
+  ],
+  "formal_model": {
+    "requirement_R": {
+      "name": "Engineering hardness requirement",
+      "expression": "50 <= H <= 57",
+      "lower_bound_hrc": 50,
+      "upper_bound_hrc": 57,
+      "source_ids": [
+        "FORD_NANO_VALVE_FAILURE_REVIEW",
+        "FORD_CENTRAL_LAB_US231121"
+      ]
+    },
+    "historical_verification_V_old": {
+      "name": "Historical manufacturing process-control acceptance",
+      "expression": "H >= 50",
+      "lower_bound_hrc": 50,
+      "upper_bound_hrc": null,
+      "source_ids": [
+        "FORD_REQUEST_15_SCCAF"
+      ],
+      "scope_note": "V_old represents the documented historical SCCAF process-control acceptance criterion, not the Ford engineering drawing."
+    },
+    "observed_feasible_subset_F_obs": {
+      "name": "Source-grounded observed hardness envelope",
+      "expression": "58 <= H <= 60",
+      "lower_bound_hrc": 58,
+      "upper_bound_hrc": 60,
+      "directly_observed_hrc_values": [
+        58,
+        59,
+        60
+      ],
+      "source_ids": [
+        "FORD_CENTRAL_LAB_US231121",
+        "EATON_8D"
+      ],
+      "semantics_note": "The interval 58-60 HRC is used as the envelope of source-grounded observed hardness values. It does not claim that every real-valued hardness between 58 and 60 HRC was individually measured, nor that this interval is the entire manufacturing feasible domain."
+    },
+    "verification_question": {
+      "quantified_expression": "exists H: F_obs(H) AND V_old(H) AND NOT R(H)",
+      "expanded_expression": "exists H: (58 <= H <= 60) AND (H >= 50) AND NOT(50 <= H <= 57)"
+    }
+  },
+  "expected_result": {
+    "solver_status": "SAT",
+    "defined_before_solver_execution": true,
+    "exact_witness": null,
+    "expected_witness_class": {
+      "expression": "58 <= H <= 60",
+      "lower_bound_hrc": 58,
+      "upper_bound_hrc": 60
+    },
+    "witness_checks": [
+      "F_obs must evaluate PASS",
+      "V_old must evaluate PASS",
+      "R must evaluate FAIL"
+    ],
+    "note": "No exact witness value is preselected. Any solver witness inside the frozen witness class is acceptable if it satisfies the frozen formal model."
+  },
+  "interpretation": {
+    "primary_claim": "The engineering hardness specification contained a 57 HRC upper bound, while the documented historical production process-control criterion did not include that upper bound. Source-grounded fractured hardware contains hardness values above 57 HRC. The benchmark asks whether a state exists inside the observed hardness envelope that satisfies the historical process-control acceptance criterion while violating the engineering requirement.",
+    "classification_if_expected_result_matches": "VERIFICATION_ESCAPE_WITHIN_SOURCE_GROUNDED_OBSERVED_FEASIBLE_SUBSET"
+  },
+  "secondary_findings_excluded_from_primary_model": [
+    {
+      "name": "Representativeness / Relationship Gap",
+      "description": "Historical tip-only hardness checking was treated as representative of the wider hardened zone, while later investigation added profile and keeper-groove checks.",
+      "reason_excluded": "This is a spatial/representativeness relationship problem and is intentionally kept separate from the primary one-variable acceptance-boundary benchmark."
+    }
+  ],
+  "do_not_claim": [
+    "Do not claim that every 58-60 HRC valve actually passed historical production inspection.",
+    "Do not claim that a 58, 59, or 60 HRC value was measured during historical production inspection and recorded as PASS.",
+    "Do not claim that hardness was the sole cause of valve fracture.",
+    "Do not claim that every recalled vehicle contained a 58-60 HRC valve.",
+    "Do not describe the historical SCCAF as the Ford engineering drawing.",
+    "Do not claim that Ford or NHTSA formally identified a Verification Escape or Z3 counterexample; that formalization belongs to this project.",
+    "Do not describe F_obs as the full manufacturing feasible domain.",
+    "Do not claim that the Ford Central Laboratory microindentation measurements are identical measurement events or identical test methods to the historical SCCAF Rockwell production measurements."
+  ],
+  "freeze_manifest": {
+    "reference_input_sha256": "00ddee64b1e5faf7a302c5f8d7dd2b5020c75c248c62b6db82959ddcd0c66ab5",
+    "verified_sources": [
+      {
+        "source_id": "FORD_REQUEST_15_SCCAF",
+        "file": "validation/real_case_02_ford/source/INRL-EA23002-13503.pdf",
+        "sha256": "8db86ffe5a7d79ecfbcfdc86f9b9f49b672efc86b059a22d483fe18dc37cf924"
+      },
+      {
+        "source_id": "FORD_NANO_VALVE_FAILURE_REVIEW",
+        "file": "validation/real_case_02_ford/source/INRD-EA23002-13504P1.pdf",
+        "sha256": "4ecef296835ee1cc2f48cf5a1cc6ef1ea0b223d82636d22e8b076ea64986dd2d"
+      },
+      {
+        "source_id": "EATON_8D",
+        "file": "validation/real_case_02_ford/source/INRD-EA23002-13506.pdf",
+        "sha256": "156b4cc96c90f772492c19c04e6c892f1b1d81326bec2b4b40f89ff09109186a"
+      },
+      {
+        "source_id": "FORD_CENTRAL_LAB_US231121",
+        "file": "validation/real_case_02_ford/source/INRD-EA23002-13508P1.pdf",
+        "sha256": "aecc95efd9359bda84df52583d507424215446ab1b997147f4f5abf4f9021c3d"
+      }
+    ],
+    "solver_output_used_for_freeze": false,
+    "prototype_output_used_for_freeze": false
+  }
+}
