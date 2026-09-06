@@ -25,6 +25,13 @@ from src.application.verification_workflow import (
     run_verification_workflow,
 )
 
+
+from src.application.trace_view import (
+    ConstraintTraceEntry,
+    ConstraintTraceReport,
+    build_constraint_trace_view,
+)
+
 __all__ = [
     "EvidenceTrace",
     "VerificationWorkflowResult",
@@ -37,4 +44,7 @@ __all__ = [
     "apply_semantic_approvals",
     "run_document_verification_workflow",
     "run_verification_workflow",
+    "ConstraintTraceEntry",
+    "ConstraintTraceReport",
+    "build_constraint_trace_view",
 ]

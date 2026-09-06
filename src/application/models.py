@@ -195,6 +195,17 @@ class VerificationWorkflowResult:
         Solver를 다시 실행하지 않는다.
         """
 
+        from src.application.trace_view import (
+            build_constraint_trace_view,
+        )
+
+        trace_report = (
+            build_constraint_trace_view(
+                self.case,
+                self.evidence,
+            )
+        )
+
         return {
             "status": self.status,
             "case_name": self.case.name,
@@ -227,4 +238,7 @@ class VerificationWorkflowResult:
                 item.to_dict()
                 for item in self.evidence
             ],
+            "constraint_trace": _json_safe(
+                trace_report.to_dict()
+            ),
         }
