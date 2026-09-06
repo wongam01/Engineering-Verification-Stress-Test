@@ -11,6 +11,11 @@ from src.ai.core_adapter import (
 from src.application.models import (
     EvidenceTrace,
 )
+from src.application.evidence_trace import (
+    build_source_reference,
+    extract_explicit_source_pages,
+    select_single_source_page,
+)
 from src.core.models import (
     EngineeringCase,
 )
@@ -476,13 +481,29 @@ def apply_semantic_approvals(
 
         candidate.applied = True
 
-        source_reference = None
-
-        if candidate.source_block_id:
-            source_reference = (
-                f"{candidate.source_name}:"
-                f"{candidate.source_block_id}"
+        source_pages = (
+            extract_explicit_source_pages(
+                candidate.source_text
             )
+        )
+
+        source_page = (
+            select_single_source_page(
+                source_pages
+            )
+        )
+
+        source_reference = (
+            build_source_reference(
+                source_name=(
+                    candidate.source_name
+                ),
+                source_block_id=(
+                    candidate.source_block_id
+                ),
+                source_pages=source_pages,
+            )
+        )
 
         evidence.append(
             EvidenceTrace(
@@ -495,6 +516,12 @@ def apply_semantic_approvals(
                 ),
                 source_text=(
                     candidate.source_text
+                ),
+                source_page=(
+                    source_page
+                ),
+                source_pages=(
+                    source_pages
                 ),
                 source_block_id=(
                     candidate.source_block_id

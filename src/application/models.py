@@ -66,6 +66,7 @@ class EvidenceTrace:
     source_text: str
 
     source_page: int | None = None
+    source_pages: tuple[int, ...] = ()
     source_block_id: str | None = None
     source_reference: str | None = None
 
@@ -82,6 +83,11 @@ class EvidenceTrace:
         if self.source_page is not None:
             data["source_page"] = (
                 self.source_page
+            )
+
+        if self.source_pages:
+            data["source_pages"] = list(
+                self.source_pages
             )
 
         if self.source_block_id is not None:
