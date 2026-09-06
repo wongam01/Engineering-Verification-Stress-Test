@@ -320,7 +320,22 @@ class SemanticIngressTest(
                 .formal_result
                 .evidence
             ),
-            2,
+            3,
+        )
+
+        self.assertEqual(
+            [
+                trace.role
+                for trace
+                in result
+                .formal_result
+                .evidence
+            ],
+            [
+                "requirement",
+                "verification",
+                "feasible_domain",
+            ],
         )
 
     def test_06_unsupported_candidate_blocks_formal_workflow(

@@ -176,28 +176,76 @@ def normalize_source_variable_group_key(
     """
     UI grouping용 key.
 
-    자연어 변수명은 대소문자/공백 차이를 묶지만,
-    H / h 같은 순수 symbol은 서로 다른 변수로 보존한다.
+    Rules:
+    - standalone engineering symbols preserve case:
+      H != h
+    - natural-language labels ending in a short engineering
+      symbol are grouped with that symbol:
+      "Hardness H" -> H
+      "Pressure P" -> P
+    - ordinary words are not reduced to their last word:
+      "Outlet Temperature" != "Temperature"
     """
 
     normalized = " ".join(
         source_variable.split()
     )
 
-    is_symbol = (
-        bool(normalized)
-        and (
-            normalized[0].isalpha()
-            or normalized[0] == "_"
-        )
-        and all(
-            character.isalnum()
-            or character == "_"
-            for character in normalized
-        )
-    )
+    if not normalized:
+        return "label:"
 
-    if is_symbol:
-        return "symbol:" + normalized
+    parts = normalized.split()
+
+    def is_identifier(
+        value: str,
+    ) -> bool:
+        return (
+            bool(value)
+            and (
+                value[0].isalpha()
+                or value[0] == "_"
+            )
+            and all(
+                character.isalnum()
+                or character == "_"
+                for character in value
+            )
+        )
+
+    def is_short_engineering_symbol(
+        value: str,
+    ) -> bool:
+        if not is_identifier(value):
+            return False
+
+        return (
+            len(value) == 1
+            or any(
+                character.isdigit()
+                for character in value
+            )
+            or "_" in value
+            or (
+                len(value) <= 4
+                and value.isupper()
+            )
+        )
+
+    # Standalone identifier.
+    # Preserve exact case so H and h remain distinct.
+    if len(parts) == 1:
+        if is_identifier(normalized):
+            return "symbol:" + normalized
+
+        return "label:" + normalized.casefold()
+
+    # Natural-language alias ending with a short
+    # engineering symbol, e.g. "Hardness H".
+    trailing = parts[-1]
+
+    if is_short_engineering_symbol(
+        trailing
+    ):
+        return "symbol:" + trailing
 
     return "label:" + normalized.casefold()

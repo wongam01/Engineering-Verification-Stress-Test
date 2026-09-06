@@ -4,6 +4,9 @@ from src.application.models import (
     EvidenceTrace,
     VerificationWorkflowResult,
 )
+from src.application.evidence_trace import (
+    assemble_workflow_evidence,
+)
 from src.core.assurance_report import (
     build_assurance_report,
     render_assurance_report,
@@ -61,9 +64,10 @@ def run_verification_workflow(
     )
 
     traces = (
-        list(evidence)
-        if evidence is not None
-        else []
+        assemble_workflow_evidence(
+            case,
+            evidence,
+        )
     )
 
     required_targets = (

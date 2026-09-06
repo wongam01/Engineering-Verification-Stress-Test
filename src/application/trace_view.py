@@ -219,6 +219,55 @@ def build_constraint_trace_view(
         )
 
     # =====================================================
+    # FEASIBLE DOMAINS
+    # =====================================================
+
+    for variable_id, variable in (
+        case.variables.items()
+    ):
+        key = (
+            "feasible_domain",
+            variable_id,
+        )
+
+        formal_keys.add(
+            key
+        )
+
+        linked = tuple(
+            evidence_by_key.get(
+                key,
+                [],
+            )
+        )
+
+        entries.append(
+            ConstraintTraceEntry(
+                role="feasible_domain",
+                target_id=variable_id,
+                constraint_type=(
+                    "feasible_domain"
+                ),
+                formal_constraint={
+                    "variable": variable_id,
+                    "unit": variable.unit,
+                    "feasible_min": (
+                        variable.feasible_min
+                    ),
+                    "feasible_max": (
+                        variable.feasible_max
+                    ),
+                },
+                trace_status=(
+                    "EVIDENCE_LINKED"
+                    if linked
+                    else "EVIDENCE_NOT_LINKED"
+                ),
+                evidence=linked,
+            )
+        )
+
+    # =====================================================
     # UNMATCHED / ORPHAN EVIDENCE
     # =====================================================
 

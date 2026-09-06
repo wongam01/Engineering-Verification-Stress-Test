@@ -1,6 +1,13 @@
 import re
 from collections.abc import Sequence
 
+from src.application.models import (
+    EvidenceTrace,
+)
+from src.core.models import (
+    EngineeringCase,
+)
+
 
 _PAGE_MARKER_PATTERN = re.compile(
     r"(?m)^\s*===== PDF PAGE (\d+) =====\s*$"
@@ -98,3 +105,151 @@ def build_source_reference(
     return ":".join(
         parts
     )
+
+
+def build_feasible_domain_evidence(
+    case: EngineeringCase,
+) -> list[EvidenceTrace]:
+    """
+    EngineeringCase의 evidence-backed Feasible Domain을
+    Application-level Evidence Trace로 변환한다.
+
+    Core의 FeasibleDomainEvidence 모델을 변경하지 않고,
+    최종 workflow 결과에서 F와 그 출처를 R/V evidence와
+    함께 추적할 수 있게 한다.
+    """
+
+    traces = []
+
+    for variable_id, variable in (
+        case.variables.items()
+    ):
+        evidence = (
+            variable.feasible_evidence
+        )
+
+        if evidence is None:
+            continue
+
+        domain = (
+            f"{variable.feasible_min} <= "
+            f"{variable_id} <= "
+            f"{variable.feasible_max} "
+            f"{variable.unit}"
+        ).strip()
+
+        details = [
+            "Feasible Domain: " + domain,
+            (
+                "Evidence Type: "
+                + evidence.source_type
+            ),
+            (
+                "Approval Status: "
+                + evidence.approval_status
+            ),
+        ]
+
+        if evidence.note:
+            details.append(
+                "Note: " + evidence.note
+            )
+
+        traces.append(
+            EvidenceTrace(
+                role="feasible_domain",
+                target_id=variable_id,
+                source_name=(
+                    evidence.source_type
+                ),
+                source_text="\n".join(
+                    details
+                ),
+                source_reference=(
+                    evidence.source_reference
+                ),
+            )
+        )
+
+    return traces
+
+
+def assemble_workflow_evidence(
+    case: EngineeringCase,
+    evidence: Sequence[
+        EvidenceTrace
+    ] | None = None,
+) -> list[EvidenceTrace]:
+    """
+    전달된 document evidence와 Feasible Domain evidence를
+    하나의 재사용 가능한 workflow trace로 조립한다.
+
+    호출자가 이미 같은 variable의 feasible-domain trace를
+    제공했다면 더 풍부한 기존 trace를 보존하고 중복 생성하지
+    않는다.
+    """
+
+    traces = []
+    feasible_identities = set()
+
+    def evidence_identity(
+        trace: EvidenceTrace,
+    ) -> tuple:
+        return (
+            trace.role,
+            trace.target_id,
+            trace.source_name,
+            trace.source_text,
+            trace.source_reference,
+            trace.source_page,
+            trace.source_pages,
+            trace.source_block_id,
+        )
+
+    for trace in (
+        evidence
+        if evidence is not None
+        else []
+    ):
+        if trace.role != "feasible_domain":
+            traces.append(
+                trace
+            )
+            continue
+
+        identity = evidence_identity(
+            trace
+        )
+
+        if identity in feasible_identities:
+            continue
+
+        feasible_identities.add(
+            identity
+        )
+        traces.append(
+            trace
+        )
+
+    for trace in (
+        build_feasible_domain_evidence(
+            case
+        )
+    ):
+        identity = (
+            evidence_identity(
+                trace
+            )
+        )
+
+        if identity in feasible_identities:
+            continue
+
+        feasible_identities.add(
+            identity
+        )
+        traces.append(
+            trace
+        )
+
+    return traces

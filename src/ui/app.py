@@ -6,11 +6,26 @@ import streamlit as st
 from src.application.semantic_ingress import (
     SemanticDocument,
     analyze_semantic_documents,
+    apply_semantic_approvals,
+)
+from src.application.escape_execution import (
+    run_verification_escape_workflow,
+)
+from src.application.formal_review import (
+    build_exact_approved_review_records,
+    build_review_state_signature,
+    build_review_summary_rows,
+    format_code_label,
+    format_value_with_unit,
+    has_review_state_changed,
 )
 from src.application.variable_mapping import (
     apply_analysis_variable_mappings,
     build_variable_mapping_targets,
     normalize_source_variable_group_key,
+)
+from src.core.review_completeness import (
+    build_required_review_targets,
 )
 from src.core.models import (
     EngineeringCase,
@@ -153,6 +168,9 @@ for key, default in {
     "analysis_signature": None,
     "mapped_analysis": None,
     "base_case": None,
+    "verification_result": None,
+    "verification_review_state": None,
+    "formal_model_revision": 0,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -248,6 +266,28 @@ if st.button(
                         documents
                     )
                 )
+
+            for state_key in list(
+                st.session_state.keys()
+            ):
+                if state_key.startswith(
+                    "semantic_approval_"
+                ):
+                    del st.session_state[
+                        state_key
+                    ]
+
+            st.session_state[
+                "formal_model_revision"
+            ] += 1
+
+            st.session_state[
+                "verification_result"
+            ] = None
+
+            st.session_state[
+                "verification_review_state"
+            ] = None
 
             st.session_state[
                 "semantic_analysis"
@@ -848,6 +888,18 @@ if analysis is not None:
                     "base_case"
                 ] = base_case
 
+                st.session_state[
+                    "formal_model_revision"
+                ] += 1
+
+                st.session_state[
+                    "verification_result"
+                ] = None
+
+                st.session_state[
+                    "verification_review_state"
+                ] = None
+
                 st.success(
                     "Formal model preparation complete."
                 )
@@ -856,6 +908,45 @@ if analysis is not None:
                 st.error(
                     str(exc)
                 )
+
+
+# A prepared model must never survive removal of
+# semantic approval or a stale document analysis.
+if (
+    analysis is not None
+    and "all_semantics_approved" in locals()
+    and not all_semantics_approved
+):
+    if (
+        st.session_state["mapped_analysis"]
+        is not None
+        or st.session_state["base_case"]
+        is not None
+    ):
+        st.session_state[
+            "mapped_analysis"
+        ] = None
+
+        st.session_state[
+            "base_case"
+        ] = None
+
+        st.session_state[
+            "verification_result"
+        ] = None
+
+        st.session_state[
+            "verification_review_state"
+        ] = None
+
+        st.session_state[
+            "formal_model_revision"
+        ] += 1
+
+        st.info(
+            "Semantic approval state changed. "
+            "The prepared formal model has been invalidated."
+        )
 
 
 # =========================================================
@@ -869,6 +960,55 @@ mapped_analysis = st.session_state[
 base_case = st.session_state[
     "base_case"
 ]
+
+
+review_revision = st.session_state[
+    "formal_model_revision"
+]
+
+current_reviewer_reference = str(
+    st.session_state.get(
+        "formal_reviewer_"
+        + str(review_revision),
+        "",
+    )
+)
+
+current_review_confirmation = bool(
+    st.session_state.get(
+        "formal_review_confirmation_"
+        + str(review_revision),
+        False,
+    )
+)
+
+if (
+    st.session_state[
+        "verification_result"
+    ]
+    is not None
+    and has_review_state_changed(
+        st.session_state[
+            "verification_review_state"
+        ],
+        current_reviewer_reference,
+        current_review_confirmation,
+    )
+):
+    st.session_state[
+        "verification_result"
+    ] = None
+
+    st.session_state[
+        "verification_review_state"
+    ] = None
+
+    st.info(
+        "Formal review state changed. "
+        "The previous Verification result, "
+        "Assurance Report, and Evidence Trace "
+        "have been invalidated."
+    )
 
 
 if (
@@ -949,8 +1089,540 @@ if (
         hide_index=True,
     )
 
-    st.info(
-        "다음 단계에서 Formal Human Review "
-        "checklist와 Run Verification을 연결한다. "
-        "현재 단계에서는 Solver가 실행되지 않습니다."
+    if (
+        st.session_state[
+            "verification_result"
+        ]
+        is None
+    ):
+        st.info(
+            "Formal Human Review가 완료된 이후 "
+            "Verification을 실행할 수 있습니다. "
+            "현재 단계에서는 Solver가 실행되지 않습니다."
+        )
+    else:
+        st.success(
+            "이 Formal Model의 Verification이 "
+            "완료되었습니다. 아래 결과와 Evidence "
+            "Trace를 확인하세요."
+        )
+
+
+
+# =========================================================
+# FORMAL HUMAN REVIEW + VERIFICATION
+# =========================================================
+
+if (
+    mapped_analysis is not None
+    and base_case is not None
+):
+    approved_ids = [
+        candidate.candidate_id
+        for candidate
+        in mapped_analysis.candidates
+    ]
+
+    try:
+        formal_ingress = (
+            apply_semantic_approvals(
+                base_case,
+                mapped_analysis,
+                approved_ids,
+            )
+        )
+
+    except Exception as exc:
+        formal_ingress = None
+
+        st.error(
+            "Formal model assembly failed: "
+            f"{exc}"
+        )
+
+
+    if formal_ingress is not None:
+        if (
+            formal_ingress.status
+            != "READY_FOR_FORMAL_WORKFLOW"
+        ):
+            st.divider()
+
+            st.header(
+                "5 · Formal Human Review"
+            )
+
+            st.error(
+                "The semantic model is not ready "
+                "for the formal verification workflow."
+            )
+
+            for issue in formal_ingress.issues:
+                st.write(
+                    "•",
+                    issue,
+                )
+
+        else:
+            required_targets = (
+                build_required_review_targets(
+                    formal_ingress.case
+                )
+            )
+
+            st.divider()
+
+            st.header(
+                "5 · Formal Human Review"
+            )
+
+            st.caption(
+                "Engineering review must be completed "
+                "before solver execution. "
+                "Semantic approval alone does not "
+                "authorize formal verification."
+            )
+
+            st.subheader(
+                "Review Summary"
+            )
+
+            st.dataframe(
+                build_review_summary_rows(
+                    required_targets
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+
+            revision = st.session_state[
+                "formal_model_revision"
+            ]
+
+            reviewer_reference = (
+                st.text_input(
+                    "Reviewer Reference",
+                    placeholder=(
+                        "Reviewer name, employee ID, "
+                        "or traceable review reference"
+                    ),
+                    key=(
+                        "formal_reviewer_"
+                        + str(revision)
+                    ),
+                )
+            )
+
+            final_confirmation = (
+                st.checkbox(
+                    "I confirm that every item in the "
+                    "Review Summary has been reviewed "
+                    "and approved.",
+                    key=(
+                        "formal_review_confirmation_"
+                        + str(revision)
+                    ),
+                )
+            )
+
+            reviewer_present = bool(
+                reviewer_reference.strip()
+            )
+
+            if (
+                final_confirmation
+                and reviewer_present
+            ):
+                st.success(
+                    "Ready for Verification. "
+                    "The complete Review Summary has "
+                    "been approved."
+                )
+
+            else:
+                st.info(
+                    "Formal verification remains blocked "
+                    "until the final confirmation is "
+                    "checked and a Reviewer Reference "
+                    "is provided."
+                )
+
+            run_enabled = (
+                bool(required_targets)
+                and final_confirmation
+                and reviewer_present
+            )
+
+            if st.button(
+                "Run Verification",
+                type="primary",
+                disabled=not run_enabled,
+            ):
+                try:
+                    review_records = (
+                        build_exact_approved_review_records(
+                            required_targets,
+                            reviewer_reference,
+                            final_confirmation,
+                        )
+                    )
+
+                    with st.spinner(
+                        "Executing assured formal "
+                        "verification..."
+                    ):
+                        verification_result = (
+                            run_verification_escape_workflow(
+                                formal_ingress.case,
+                                review_records,
+                                evidence=(
+                                    formal_ingress.evidence
+                                ),
+                                generate_patches=False,
+                            )
+                        )
+
+                    st.session_state[
+                        "verification_result"
+                    ] = verification_result
+
+                    st.session_state[
+                        "verification_review_state"
+                    ] = build_review_state_signature(
+                        reviewer_reference,
+                        final_confirmation,
+                    )
+
+                    st.rerun()
+
+                except Exception as exc:
+                    st.error(
+                        "Verification execution failed: "
+                        f"{exc}"
+                    )
+
+
+# =========================================================
+# VERIFICATION RESULT
+# =========================================================
+
+verification_result = st.session_state[
+    "verification_result"
+]
+
+
+if verification_result is not None:
+    st.divider()
+
+    st.header(
+        "6 · Verification Result"
     )
+
+    st.caption(
+        "This result corresponds to the most "
+        "recently prepared and formally reviewed "
+        "model."
+    )
+
+    assured_result = (
+        verification_result.assured_result
+    )
+
+    if not assured_result.core_executed:
+        st.warning(
+            "Formal verification was not executed."
+        )
+
+        st.write(
+            "Workflow status:",
+            verification_result.status,
+        )
+
+        human_review = getattr(
+            assured_result,
+            "human_review",
+            None,
+        )
+
+        if human_review is not None:
+            for issue in getattr(
+                human_review,
+                "issues",
+                [],
+            ):
+                st.write(
+                    f"• {issue.code}: "
+                    f"{issue.message}"
+                )
+
+    else:
+        pipeline = (
+            assured_result.pipeline_result
+        )
+
+        if pipeline.has_escape:
+            st.error(
+                "VERIFICATION ESCAPE DETECTED"
+            )
+
+            st.markdown(
+                "A feasible state has been identified "
+                "that satisfies the verification "
+                "criterion while violating the "
+                "engineering requirement."
+            )
+
+            escape_count = 0
+
+            for requirement_result in (
+                pipeline.requirement_results
+            ):
+                stress_result = (
+                    requirement_result.stress_result
+                )
+
+                if not stress_result.escape_found:
+                    continue
+
+                escape_count += 1
+
+                with st.container(
+                    border=True
+                ):
+                    st.subheader(
+                        "Counterexample · "
+                        + stress_result.requirement_id
+                    )
+
+                    state_rows = []
+
+                    for (
+                        variable_id,
+                        value,
+                    ) in stress_result.state.items():
+                        variable_spec = (
+                            verification_result.case
+                            .variables.get(
+                                variable_id
+                            )
+                        )
+
+                        state_rows.append(
+                            {
+                                "Variable": (
+                                    variable_id
+                                ),
+                                "Value": str(
+                                    value
+                                ),
+                                "Unit": (
+                                    variable_spec.unit
+                                    if variable_spec
+                                    is not None
+                                    else "—"
+                                ),
+                            }
+                        )
+
+                    if state_rows:
+                        st.dataframe(
+                            state_rows,
+                            width="stretch",
+                            hide_index=True,
+                        )
+
+                    checks = [
+                        {
+                            "Condition": (
+                                "Feasible Domain"
+                            ),
+                            "Status": "PASS",
+                        },
+                        {
+                            "Condition": (
+                                "Verification Criterion"
+                            ),
+                            "Status": "PASS",
+                        },
+                        {
+                            "Condition": (
+                                "Engineering Requirement"
+                            ),
+                            "Status": "FAIL",
+                        },
+                    ]
+
+                    st.dataframe(
+                        checks,
+                        width="stretch",
+                        hide_index=True,
+                    )
+
+                    details_left, details_right = (
+                        st.columns(2)
+                    )
+
+                    with details_left:
+                        if (
+                            stress_result.worst_violation
+                            is not None
+                        ):
+                            st.metric(
+                                "Worst Violation",
+                                format_value_with_unit(
+                                    stress_result.worst_violation,
+                                    next(
+                                        (
+                                            requirement.unit
+                                            for requirement
+                                            in verification_result
+                                            .case.requirements
+                                            if requirement.id
+                                            == stress_result
+                                            .requirement_id
+                                        ),
+                                        None,
+                                    ),
+                                ),
+                            )
+
+                    with details_right:
+                        if (
+                            stress_result.direction
+                            is not None
+                        ):
+                            st.metric(
+                                "Violation Direction",
+                                format_code_label(
+                                    stress_result
+                                    .direction
+                                ),
+                            )
+
+                    st.caption(
+                        "Formal condition: "
+                        "F(x) ∧ V(x) ∧ ¬R(x)"
+                    )
+
+            if (
+                getattr(
+                    pipeline,
+                    "has_solver_indeterminate",
+                    False,
+                )
+            ):
+                st.warning(
+                    "One or more additional "
+                    "requirements were indeterminate."
+                )
+
+        elif getattr(
+            pipeline,
+            "has_solver_indeterminate",
+            False,
+        ):
+            st.warning(
+                "INDETERMINATE"
+            )
+
+            st.markdown(
+                "The analysis could not establish "
+                "either a Verification Escape or "
+                "No Escape for at least one "
+                "requirement."
+            )
+
+        elif (
+            pipeline.status
+            == "NO_ESCAPE_FOUND"
+        ):
+            st.success(
+                "NO VERIFICATION ESCAPE FOUND"
+            )
+
+            st.markdown(
+                "No counterexample was found within "
+                "the modeled feasible domain."
+            )
+
+            st.caption(
+                "This result is limited to the "
+                "modeled requirements, verification "
+                "criteria, feasible domain, and "
+                "supported analysis scope. "
+                "It is not a product safety verdict."
+            )
+
+        else:
+            st.warning(
+                "Verification completed with status: "
+                + str(
+                    pipeline.status
+                )
+            )
+
+
+    with st.expander(
+        "Assurance Report"
+    ):
+        rendered_report = getattr(
+            verification_result,
+            "rendered_report",
+            None,
+        )
+
+        if rendered_report:
+            st.code(
+                rendered_report,
+                language=None,
+            )
+
+        else:
+            st.write(
+                "No rendered assurance report "
+                "is available."
+            )
+
+
+    with st.expander(
+        "Evidence Trace"
+    ):
+        evidence_items = getattr(
+            verification_result,
+            "evidence",
+            [],
+        )
+
+        if not evidence_items:
+            st.write(
+                "No evidence trace entries "
+                "are available."
+            )
+
+        for evidence in evidence_items:
+            reference = (
+                evidence.source_reference
+                or evidence.source_name
+            )
+
+            st.markdown(
+                "**"
+                + format_code_label(
+                    evidence.role
+                )
+                + " · "
+                + evidence.target_id
+                + "**"
+            )
+
+            st.caption(
+                "Source · "
+                + str(
+                    reference
+                )
+            )
+
+            st.code(
+                evidence.source_text,
+                language=None,
+            )

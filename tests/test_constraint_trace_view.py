@@ -97,7 +97,7 @@ class ConstraintTraceViewTest(
 
         self.assertEqual(
             len(report.entries),
-            2,
+            3,
         )
 
         requirement = (
@@ -277,7 +277,7 @@ class ConstraintTraceViewTest(
                     "entries"
                 ]
             ),
-            2,
+            3,
         )
 
         self.assertEqual(
@@ -305,6 +305,33 @@ class ConstraintTraceViewTest(
                 "unmatched_evidence"
             ],
             [],
+        )
+
+        feasible_domain = (
+            trace_report[
+                "entries"
+            ][2]
+        )
+
+        self.assertEqual(
+            feasible_domain["role"],
+            "feasible_domain",
+        )
+
+        self.assertEqual(
+            feasible_domain[
+                "trace_status"
+            ],
+            "EVIDENCE_LINKED",
+        )
+
+        self.assertEqual(
+            feasible_domain[
+                "evidence"
+            ][0][
+                "source_reference"
+            ],
+            "fixture:F_H",
         )
 
 
