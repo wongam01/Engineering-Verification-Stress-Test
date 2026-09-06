@@ -1,0 +1,116 @@
+{
+  "reference_metadata": {
+    "test_id": "TEST-03-CONTROLLED-FAULT-INJECTION",
+    "name": "Controlled Fault Injection / Fail-Safe Validation",
+    "status": "FROZEN_REFERENCE_V1",
+    "defined_before_official_fault_injection_run": true,
+    "official_fault_injection_output_available_during_definition": false,
+    "purpose": "Verify that unsupported, invalid, incomplete, ambiguous, indeterminate, or unsafe conditions are preserved as fail-safe states instead of being forced into normal solver conclusions.",
+    "frozen_at_utc": "2026-09-06T08:28:21.465829+00:00",
+    "reference_input_sha256": "e5badf4e265c27c7fd89ce99b7932125d64433655758056e55c9b5f1e715b37c",
+    "official_fault_injection_run_before_freeze": false
+  },
+  "test_matrix": [
+    {
+      "id": "T3-01",
+      "fault": "unsupported_constraint_semantics",
+      "injection": "Use a constraint type outside the supported deterministic Core vocabulary.",
+      "expected": {
+        "issue_code": "UNSUPPORTED_CONSTRAINT",
+        "core_solver_must_not_run": true,
+        "must_not_report_escape_or_no_escape": true
+      }
+    },
+    {
+      "id": "T3-02",
+      "fault": "external_analysis_required",
+      "injection": "Use a requirement whose semantics require external engineering analysis such as FEA.",
+      "expected": {
+        "external_analysis_required": true,
+        "core_solver_must_not_run": true,
+        "must_not_reduce_external_analysis_to_scalar_core_logic": true
+      }
+    },
+    {
+      "id": "T3-03",
+      "fault": "invalid_core_input",
+      "injection": "Provide an invalid engineering case such as an internally invalid verification range.",
+      "expected": {
+        "pipeline_status": "INVALID_INPUT",
+        "validation_valid": false,
+        "core_solver_must_not_run": true
+      }
+    },
+    {
+      "id": "T3-04",
+      "fault": "missing_feasible_domain_evidence",
+      "injection": "Remove required feasible-domain evidence.",
+      "expected": {
+        "assurance_ready": false,
+        "pipeline_status_when_run_through_assured_pipeline": "ASSURANCE_NOT_READY",
+        "core_solver_must_not_run": true
+      }
+    },
+    {
+      "id": "T3-05",
+      "fault": "human_review_incomplete",
+      "injection": "Leave a required human-review target unreviewed.",
+      "expected": {
+        "ready_for_solver": false,
+        "pipeline_status": "HUMAN_REVIEW_BLOCKED",
+        "core_solver_must_not_run": true
+      }
+    },
+    {
+      "id": "T3-06",
+      "fault": "solver_unknown_or_timeout",
+      "injection": "Force or simulate an indeterminate solver result.",
+      "expected": {
+        "solver_status": "UNKNOWN",
+        "pipeline_status": "SOLVER_INDETERMINATE",
+        "assurance_status": "INDETERMINATE",
+        "must_not_collapse_to_no_escape": true
+      }
+    },
+    {
+      "id": "T3-07",
+      "fault": "unsafe_patch_interpretation",
+      "injection": "Generate a mathematically closing patch and inspect reporting semantics.",
+      "expected": {
+        "model_closure_may_be_reported": true,
+        "must_not_claim_practicality_or_engineering_approval": true
+      }
+    },
+    {
+      "id": "T3-08",
+      "fault": "conflicting_correction_history",
+      "injection": "Provide conflicting previously reviewed mappings for the same source meaning.",
+      "expected": {
+        "must_not_auto_resolve_conflict": true,
+        "requires_human_review": true,
+        "must_not_create_automatic_approval": true
+      }
+    }
+  ],
+  "global_fail_safe_rules": [
+    "UNKNOWN must never be interpreted as UNSAT or NO_ESCAPE.",
+    "Unsupported semantics must not be converted into invented deterministic constraints.",
+    "Missing engineering evidence must not be replaced with guessed feasible-domain values.",
+    "Incomplete human review must not be bypassed.",
+    "A mathematically closing patch must not be described as practically valid or engineer-approved without supporting evidence.",
+    "Conflicting correction history must not create automatic approval."
+  ],
+  "official_run_policy": {
+    "expected_matrix_defined_before_run": true,
+    "reference_must_be_frozen_before_official_run": true,
+    "git_checkpoint_required_before_official_run": true,
+    "expected_results_must_not_be_modified_after_observing_official_run": true
+  },
+  "freeze_manifest": {
+    "reference_input_file": "reference/reference_input_v1.json",
+    "reference_input_sha256": "e5badf4e265c27c7fd89ce99b7932125d64433655758056e55c9b5f1e715b37c",
+    "official_fault_injection_output_used_for_freeze": false,
+    "official_fault_injection_run_before_freeze": false,
+    "expected_results_modified_after_run": false
+  }
+}
