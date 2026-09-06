@@ -1,0 +1,75 @@
+TEST #3 — FIRST OFFICIAL CONTROLLED FAULT INJECTION RUN
+==============================================
+PRE-RUN COMMIT:
+ce22a1190d4f87df0083f54c45875763f462a9d6
+
+REFERENCE SHA256:
+3b5180fe264e031fd7b7e5239109863387e3ce1f81f9e96fb7ef84e4d0cc9586
+
+FROZEN MATRIX:
+T3-01, T3-02, T3-03, T3-04, T3-05, T3-06, T3-07, T3-08
+
+===== OFFICIAL FAULT INJECTION START =====
+
+T3-01 — unsupported_constraint_semantics
+------------------------------------------------------------
+assertion_test: tests/test_assured_pipeline_scope.py::AssuredPipelineScopeTest.test_02_unknown_constraint_blocks_core
+tests_run: 1
+result: PASS
+
+T3-02 — external_analysis_required
+------------------------------------------------------------
+assertion_test: tests/test_assured_pipeline_scope.py::AssuredPipelineScopeTest.test_01_fea_blocks_core
+tests_run: 1
+result: PASS
+
+T3-03 — invalid_core_input
+------------------------------------------------------------
+assertion_test: tests/test_assurance_report.py::AssuranceReportTest.test_invalid_pipeline_input_is_preserved
+assertion_test: tests/test_core_regression.py::CoreRegressionTest.test_03_invalid_input
+assertion_test: validation/fault_injection_03/prototype/test_official_fault_injection_probes.py::OfficialFaultInjectionProbeTest.test_t3_03_invalid_input_blocks_core
+tests_run: 3
+result: PASS
+
+T3-04 — missing_feasible_domain_evidence
+------------------------------------------------------------
+assertion_test: tests/test_assurance_readiness.py::AssuranceReadinessTest.test_02_missing_evidence_not_ready
+assertion_test: validation/fault_injection_03/prototype/test_official_fault_injection_probes.py::OfficialFaultInjectionProbeTest.test_t3_04_missing_evidence_blocks_core
+tests_run: 2
+result: PASS
+
+T3-05 — human_review_incomplete
+------------------------------------------------------------
+assertion_test: tests/test_human_review_gate.py::HumanReviewGateTest.test_02_unreviewed_blocks_solver
+assertion_test: validation/fault_injection_03/prototype/test_official_fault_injection_probes.py::OfficialFaultInjectionProbeTest.test_t3_05_incomplete_review_blocks_core
+tests_run: 2
+result: PASS
+
+T3-06 — solver_unknown_or_timeout
+------------------------------------------------------------
+assertion_test: tests/test_assurance_solver_indeterminate.py::AssuranceSolverIndeterminateTest.test_01_unknown_is_reported_as_indeterminate
+assertion_test: tests/test_pipeline_solver_indeterminate.py::PipelineSolverIndeterminateTest.test_01_unknown_is_not_no_escape
+tests_run: 2
+result: PASS
+
+T3-07 — unsafe_patch_interpretation
+------------------------------------------------------------
+assertion_test: tests/test_patch_semantics.py::PatchSemanticsTest.test_02_report_does_not_claim_practicality
+tests_run: 1
+result: PASS
+
+T3-08 — conflicting_correction_history
+------------------------------------------------------------
+assertion_test: tests/test_correction_history.py::CorrectionHistoryTest.test_06_conflicting_history_is_not_auto_resolved
+assertion_test: validation/fault_injection_03/prototype/test_official_fault_injection_probes.py::OfficialFaultInjectionProbeTest.test_t3_08_conflict_requires_review
+tests_run: 2
+result: PASS
+
+===== OFFICIAL FAULT INJECTION END =====
+
+FINAL FROZEN-REFERENCE COMPARISON
+---------------------------------
+Expected cases: 8
+Observed cases: 8
+Passed cases: 8
+RESULT: PASS

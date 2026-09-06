@@ -1,0 +1,76 @@
+{
+  "test_id": "TEST-03-CONTROLLED-FAULT-INJECTION",
+  "closure_status": "CLOSED_PASS",
+  "run": {
+    "run_id": "RUN_01_FIRST_OFFICIAL_CONTROLLED_FAULT_INJECTION",
+    "pre_run_commit": "ce22a1190d4f87df0083f54c45875763f462a9d6",
+    "official_cases_expected": 8,
+    "official_cases_observed": 8,
+    "official_cases_passed": 8,
+    "final_result": "PASS",
+    "official_rerun_for_closure": false
+  },
+  "frozen_reference": {
+    "status": "FROZEN_REFERENCE_V1",
+    "reference_sha256": "3b5180fe264e031fd7b7e5239109863387e3ce1f81f9e96fb7ef84e4d0cc9586",
+    "reference_input_sha256": "e5badf4e265c27c7fd89ce99b7932125d64433655758056e55c9b5f1e715b37c",
+    "expected_matrix_defined_before_run": true
+  },
+  "case_results": {
+    "T3-01": {
+      "fault": "unsupported_constraint_semantics",
+      "result": "PASS",
+      "assertion_tests_run": 1
+    },
+    "T3-02": {
+      "fault": "external_analysis_required",
+      "result": "PASS",
+      "assertion_tests_run": 1
+    },
+    "T3-03": {
+      "fault": "invalid_core_input",
+      "result": "PASS",
+      "assertion_tests_run": 3
+    },
+    "T3-04": {
+      "fault": "missing_feasible_domain_evidence",
+      "result": "PASS",
+      "assertion_tests_run": 2
+    },
+    "T3-05": {
+      "fault": "human_review_incomplete",
+      "result": "PASS",
+      "assertion_tests_run": 2
+    },
+    "T3-06": {
+      "fault": "solver_unknown_or_timeout",
+      "result": "PASS",
+      "assertion_tests_run": 2
+    },
+    "T3-07": {
+      "fault": "unsafe_patch_interpretation",
+      "result": "PASS",
+      "assertion_tests_run": 1
+    },
+    "T3-08": {
+      "fault": "conflicting_correction_history",
+      "result": "PASS",
+      "assertion_tests_run": 2
+    }
+  },
+  "evidence": {
+    "official_run_output": "prototype/run_01_fault_injection_output.txt",
+    "official_run_output_sha256": "06faaf7e9d25e0eb0494a49ae4731efaff0a2a1b9a35916383e9008c4f39329e",
+    "runner_sha256": "eb2e5263e8f3738eaaaf7455a109d080e571a7ffb00cf5627e8ed711fc215a46",
+    "probe_sha256": "f3e0ea91b00b2c1ecf7b2c713a041fa423a2f76ef24534feee78fda8255627af"
+  },
+  "interpretation": {
+    "claim": "The frozen Test #3 fault-injection matrix passed all eight official fail-safe cases in the first official run.",
+    "guardrails": [
+      "PASS does not imply arbitrary unsupported engineering semantics can be solved by the Core.",
+      "External-analysis requirements remain outside deterministic Core scope.",
+      "Solver UNKNOWN is preserved as indeterminate rather than treated as proof of no escape.",
+      "Mathematical patch closure is not equivalent to engineering approval or practical feasibility."
+    ]
+  }
+}
