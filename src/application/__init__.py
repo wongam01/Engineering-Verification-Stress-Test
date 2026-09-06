@@ -9,6 +9,18 @@ from src.application.models import (
     EvidenceTrace,
     VerificationWorkflowResult,
 )
+from src.application.semantic_ingress import (
+    SemanticAnalysisResult,
+    SemanticCandidate,
+    SemanticDocument,
+    SemanticIngressResult,
+    analyze_semantic_documents,
+    apply_semantic_approvals,
+)
+from src.application.document_workflow import (
+    DocumentVerificationWorkflowResult,
+    run_document_verification_workflow,
+)
 from src.application.verification_workflow import (
     run_verification_workflow,
 )
@@ -16,5 +28,13 @@ from src.application.verification_workflow import (
 __all__ = [
     "EvidenceTrace",
     "VerificationWorkflowResult",
+    "SemanticDocument",
+    "SemanticCandidate",
+    "SemanticAnalysisResult",
+    "SemanticIngressResult",
+    "DocumentVerificationWorkflowResult",
+    "analyze_semantic_documents",
+    "apply_semantic_approvals",
+    "run_document_verification_workflow",
     "run_verification_workflow",
 ]
