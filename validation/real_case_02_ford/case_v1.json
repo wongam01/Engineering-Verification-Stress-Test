@@ -1,0 +1,37 @@
+{
+  "name": "Ford Nano 2.7L/3.0L EcoBoost Intake Valve Hardness Test 02B",
+  "variables": {
+    "H": {
+      "unit": "HRC",
+      "feasible_min": "58",
+      "feasible_max": "60",
+      "feasible_evidence": {
+        "source_type": "source_grounded_observed_envelope",
+        "source_reference": "reference_v1.json:formal_model.observed_feasible_subset_F_obs",
+        "approval_status": "approved",
+        "note": "The interval 58-60 HRC is used as the envelope of source-grounded observed hardness values. It does not claim that every real-valued hardness between 58 and 60 HRC was individually measured, nor that this interval is the entire manufacturing feasible domain."
+      }
+    }
+  },
+  "requirements": [
+    {
+      "id": "R_HARDNESS",
+      "type": "range",
+      "unit": "HRC",
+      "variable": "H",
+      "min": "50",
+      "max": "57",
+      "description": "Engineering hardness requirement"
+    }
+  ],
+  "verification_constraints": [
+    {
+      "id": "V_OLD_HARDNESS",
+      "type": "lower_bound",
+      "unit": "HRC",
+      "variable": "H",
+      "min": "50",
+      "description": "Historical manufacturing process-control acceptance"
+    }
+  ]
+}

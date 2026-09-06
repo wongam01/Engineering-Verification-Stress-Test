@@ -572,50 +572,67 @@ def build_verification_constraints(
     현재 검사계획에서 PASS가 되기 위한
     모든 조건을 만든다.
 
-    1. 각 변수의 기본 검사 Range
-    2. 추가 관계조건
-       예: X + Y <= 40.05
+    Variable-level Verification bound는
+    one-sided / two-sided / absent를 모두 지원한다.
+
+    verification_min, verification_max 둘 다 존재:
+        min <= X <= max
+
+    verification_min만 존재:
+        X >= min
+
+    verification_max만 존재:
+        X <= max
+
+    둘 다 없음:
+        해당 변수에 기본 Verification bound를
+        추가하지 않는다.
+
+    별도 Verification 조건은
+    case.verification_constraints에서 처리한다.
     """
 
     constraints = []
 
     # -----------------------------------------------------
-    # 기본 Variable 검사 범위
+    # 기본 Variable Verification Bounds
     # -----------------------------------------------------
 
     for (
         name,
         variable_spec,
     ) in case.variables.items():
+        variable = z3_variables.get(name)
 
-        variable = (
-            z3_variables.get(
-                name
+        if (
+            variable_spec.verification_min
+            is not None
+        ):
+            constraints.append(
+                variable
+                >= z3_value(
+                    variable_spec.verification_min
+                )
             )
-        )
 
-        constraints.append(
-            variable
-            >= z3_value(
-                variable_spec.verification_min
+        if (
+            variable_spec.verification_max
+            is not None
+        ):
+            constraints.append(
+                variable
+                <= z3_value(
+                    variable_spec.verification_max
+                )
             )
-        )
-
-        constraints.append(
-            variable
-            <= z3_value(
-                variable_spec.verification_max
-            )
-        )
 
     # -----------------------------------------------------
-    # 추가 Verification 관계조건
+    # 추가 Verification 조건
     # -----------------------------------------------------
 
     for constraint in (
         case.verification_constraints
     ):
-
         expression = (
             build_requirement_expression(
                 constraint,

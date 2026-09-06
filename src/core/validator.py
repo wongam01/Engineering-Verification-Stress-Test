@@ -90,8 +90,12 @@ def validate_variables(
         # ---------------------------------------------
 
         if (
-            variable.verification_min
-            > variable.verification_max
+            variable.verification_min is not None
+            and variable.verification_max is not None
+            and (
+                variable.verification_min
+                > variable.verification_max
+            )
         ):
 
             issues.append(
@@ -108,10 +112,13 @@ def validate_variables(
         # NOMINAL
         # ---------------------------------------------
 
-        if not (
-            variable.feasible_min
-            <= variable.nominal
-            <= variable.feasible_max
+        if (
+            variable.nominal is not None
+            and not (
+                variable.feasible_min
+                <= variable.nominal
+                <= variable.feasible_max
+            )
         ):
 
             issues.append(
@@ -128,12 +135,25 @@ def validate_variables(
         # VERIFICATION / FEASIBLE OVERLAP
         # ---------------------------------------------
 
+        lower_excludes_feasible = (
+            variable.verification_min is not None
+            and (
+                variable.verification_min
+                > variable.feasible_max
+            )
+        )
+
+        upper_excludes_feasible = (
+            variable.verification_max is not None
+            and (
+                variable.verification_max
+                < variable.feasible_min
+            )
+        )
+
         no_overlap = (
-            variable.verification_max
-            < variable.feasible_min
-            or
-            variable.verification_min
-            > variable.feasible_max
+            lower_excludes_feasible
+            or upper_excludes_feasible
         )
 
         if no_overlap:

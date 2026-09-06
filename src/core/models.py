@@ -85,18 +85,39 @@ class FeasibleDomainEvidence:
 class VariableSpec:
     """
     하나의 Engineering 변수 정의.
+
+    nominal:
+        알려진 정상 / 기준 상태.
+        실제 근거가 없는 경우 None을 허용한다.
+
+    feasible_min / feasible_max:
+        현실적으로 관측 또는 근거로 뒷받침되는
+        Feasible Domain 범위.
+
+    verification_min / verification_max:
+        변수 자체에 정의된 기본 Verification bound.
+
+        둘 다 존재:
+            verification_min <= X <= verification_max
+
+        min만 존재:
+            X >= verification_min
+
+        max만 존재:
+            X <= verification_max
+
+        둘 다 없음:
+            변수 자체 Verification bound 없음.
+            verification_constraints를 통해 별도 조건을
+            정의할 수 있다.
     """
 
     unit: str
-
-    nominal: Decimal
-
+    nominal: Decimal | None
     feasible_min: Decimal
     feasible_max: Decimal
-
-    verification_min: Decimal
-    verification_max: Decimal
-
+    verification_min: Decimal | None
+    verification_max: Decimal | None
     feasible_evidence: (
         FeasibleDomainEvidence | None
     ) = None
@@ -106,34 +127,45 @@ class VariableSpec:
         cls,
         data: dict[str, Any],
     ) -> "VariableSpec":
-
         evidence_data = data.get(
             "feasible_evidence"
         )
 
+        nominal = data.get("nominal")
+        verification_minimum = data.get(
+            "verification_min"
+        )
+        verification_maximum = data.get(
+            "verification_max"
+        )
+
         return cls(
             unit=data["unit"],
-
-            nominal=to_decimal(
-                data["nominal"]
+            nominal=(
+                to_decimal(nominal)
+                if nominal is not None
+                else None
             ),
-
             feasible_min=to_decimal(
                 data["feasible_min"]
             ),
-
             feasible_max=to_decimal(
                 data["feasible_max"]
             ),
-
-            verification_min=to_decimal(
-                data["verification_min"]
+            verification_min=(
+                to_decimal(
+                    verification_minimum
+                )
+                if verification_minimum is not None
+                else None
             ),
-
-            verification_max=to_decimal(
-                data["verification_max"]
+            verification_max=(
+                to_decimal(
+                    verification_maximum
+                )
+                if verification_maximum is not None
+                else None
             ),
-
             feasible_evidence=(
                 FeasibleDomainEvidence.from_dict(
                     evidence_data
@@ -144,23 +176,24 @@ class VariableSpec:
         )
 
     def to_dict(self) -> dict[str, Any]:
-
         data = {
             "unit": self.unit,
-
-            "nominal": self.nominal,
-
             "feasible_min": self.feasible_min,
             "feasible_max": self.feasible_max,
-
-            "verification_min": (
-                self.verification_min
-            ),
-
-            "verification_max": (
-                self.verification_max
-            ),
         }
+
+        if self.nominal is not None:
+            data["nominal"] = self.nominal
+
+        if self.verification_min is not None:
+            data["verification_min"] = (
+                self.verification_min
+            )
+
+        if self.verification_max is not None:
+            data["verification_max"] = (
+                self.verification_max
+            )
 
         if self.feasible_evidence is not None:
             data["feasible_evidence"] = (
