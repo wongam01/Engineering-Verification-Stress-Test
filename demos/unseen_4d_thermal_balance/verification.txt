@@ -1,0 +1,5 @@
+[Controlled Synthetic Engineering Demo]
+[Development-only evidence set]
+[Not field data and not a real industrial incident]
+
+V_BALANCE. The development acceptance procedure passes the dual-zone thermal fixture when the absolute temperature difference between Zone A temperature T_A and Zone B temperature T_B does not exceed 5 degC: |T_A - T_B| <= 5 degC.

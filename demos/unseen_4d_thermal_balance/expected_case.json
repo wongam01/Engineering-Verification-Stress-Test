@@ -1,0 +1,49 @@
+{
+  "name": "Controlled Synthetic Dual-Zone Thermal Balance",
+  "variables": {
+    "T_A": {
+      "unit": "degC",
+      "feasible_min": "20",
+      "feasible_max": "30",
+      "feasible_evidence": {
+        "source_type": "engineering_analysis",
+        "source_reference": "demos/unseen_4d_thermal_balance/feasible_domain_evidence.md#F-T_A",
+        "approval_status": "approved",
+        "note": "Component of the approved joint Cartesian-product envelope [20,30] x [20,30] degC for the controlled synthetic demo."
+      }
+    },
+    "T_B": {
+      "unit": "degC",
+      "feasible_min": "20",
+      "feasible_max": "30",
+      "feasible_evidence": {
+        "source_type": "engineering_analysis",
+        "source_reference": "demos/unseen_4d_thermal_balance/feasible_domain_evidence.md#F-T_B",
+        "approval_status": "approved",
+        "note": "Component of the approved joint Cartesian-product envelope [20,30] x [20,30] degC for the controlled synthetic demo."
+      }
+    }
+  },
+  "requirements": [
+    {
+      "id": "R_BALANCE",
+      "type": "abs_difference_max",
+      "unit": "degC",
+      "left": "T_A",
+      "right": "T_B",
+      "limit": "2",
+      "description": "The absolute temperature difference between T_A and T_B shall not exceed 2 degC."
+    }
+  ],
+  "verification_constraints": [
+    {
+      "id": "V_BALANCE",
+      "type": "abs_difference_max",
+      "unit": "degC",
+      "left": "T_A",
+      "right": "T_B",
+      "limit": "5",
+      "description": "The acceptance procedure passes when the absolute temperature difference between T_A and T_B does not exceed 5 degC."
+    }
+  ]
+}

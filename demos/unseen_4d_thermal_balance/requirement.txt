@@ -1,0 +1,5 @@
+[Controlled Synthetic Engineering Demo]
+[Development-only evidence set]
+[Not field data and not a real industrial incident]
+
+R_BALANCE. For the independently controlled dual-zone thermal fixture, the absolute temperature difference between Zone A temperature T_A and Zone B temperature T_B shall not exceed 2 degC: |T_A - T_B| <= 2 degC.
