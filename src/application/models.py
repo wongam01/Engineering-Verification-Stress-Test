@@ -17,6 +17,9 @@ from src.core.models import (
 from src.core.review_completeness import (
     RequiredReviewTarget,
 )
+from src.application.gap_classification import (
+    GapClassificationReport,
+)
 
 
 def _json_safe(
@@ -137,6 +140,10 @@ class VerificationWorkflowResult:
         default_factory=list
     )
 
+    gap_classification: (
+        GapClassificationReport | None
+    ) = None
+
     @property
     def core_executed(
         self,
@@ -240,5 +247,10 @@ class VerificationWorkflowResult:
             ],
             "constraint_trace": _json_safe(
                 trace_report.to_dict()
+            ),
+            "gap_classification": (
+                self.gap_classification.to_dict()
+                if self.gap_classification is not None
+                else None
             ),
         }

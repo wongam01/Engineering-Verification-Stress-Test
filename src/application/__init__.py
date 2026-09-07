@@ -24,6 +24,11 @@ from src.application.document_workflow import (
 from src.application.verification_workflow import (
     run_verification_workflow,
 )
+from src.application.gap_classification import (
+    GapClassification,
+    GapClassificationReport,
+    classify_verification_gap,
+)
 
 
 from src.application.trace_view import (
@@ -44,6 +49,9 @@ __all__ = [
     "apply_semantic_approvals",
     "run_document_verification_workflow",
     "run_verification_workflow",
+    "GapClassification",
+    "GapClassificationReport",
+    "classify_verification_gap",
     "ConstraintTraceEntry",
     "ConstraintTraceReport",
     "build_constraint_trace_view",

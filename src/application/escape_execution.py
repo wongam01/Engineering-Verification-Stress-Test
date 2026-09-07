@@ -7,6 +7,9 @@ from src.application.models import (
 from src.application.evidence_trace import (
     assemble_workflow_evidence,
 )
+from src.application.gap_classification import (
+    classify_verification_gap,
+)
 from src.core.assurance_readiness import (
     evaluate_assurance_readiness,
 )
@@ -316,6 +319,13 @@ def run_verification_escape_workflow(
         )
     )
 
+    gap_classification = (
+        classify_verification_gap(
+            case,
+            assured_result.pipeline_result,
+        )
+    )
+
     return VerificationWorkflowResult(
         status=assured_result.status,
         case=case,
@@ -333,4 +343,7 @@ def run_verification_escape_workflow(
             rendered_report
         ),
         evidence=traces,
+        gap_classification=(
+            gap_classification
+        ),
     )
