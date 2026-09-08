@@ -1,2 +1,7 @@
 z3-solver==5.1.0.0
 streamlit==1.63.0
+streamlit-pdf==2.0.1
+pypdf==6.16.2
+openai==3.5.0
+pydantic==2.13.5
+python-dotenv==1.2.3

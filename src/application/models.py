@@ -68,10 +68,12 @@ class EvidenceTrace:
     source_name: str
     source_text: str
 
+    source_sha256: str | None = None
     source_page: int | None = None
     source_pages: tuple[int, ...] = ()
     source_block_id: str | None = None
     source_reference: str | None = None
+    source_location_status: str | None = None
 
     def to_dict(
         self,
@@ -88,6 +90,11 @@ class EvidenceTrace:
                 self.source_page
             )
 
+        if self.source_sha256 is not None:
+            data["source_sha256"] = (
+                self.source_sha256
+            )
+
         if self.source_pages:
             data["source_pages"] = list(
                 self.source_pages
@@ -101,6 +108,11 @@ class EvidenceTrace:
         if self.source_reference is not None:
             data["source_reference"] = (
                 self.source_reference
+            )
+
+        if self.source_location_status is not None:
+            data["source_location_status"] = (
+                self.source_location_status
             )
 
         return data

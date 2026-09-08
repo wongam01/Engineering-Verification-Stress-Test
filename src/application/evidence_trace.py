@@ -199,6 +199,7 @@ def assemble_workflow_evidence(
             trace.role,
             trace.target_id,
             trace.source_name,
+            trace.source_sha256,
             trace.source_text,
             trace.source_reference,
             trace.source_page,

@@ -1,6 +1,9 @@
 from collections.abc import Callable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
+import hashlib
+import json
+import re
 from typing import Any, Literal
 
 from src.ai.core_adapter import (
@@ -33,6 +36,20 @@ SemanticExtractor = Callable[
 
 
 @dataclass(frozen=True)
+class SemanticSourcePage:
+    page_number: int
+    text: str
+
+
+@dataclass(frozen=True)
+class SourceLocationReviewRecord:
+    candidate_id: str
+    source_sha256: str
+    selected_page: int
+    confirmed: bool
+
+
+@dataclass(frozen=True)
 class SemanticDocument:
     """
     Application Layer가 AI Semantic Parser에
@@ -46,6 +63,15 @@ class SemanticDocument:
     role: SemanticRole
     source_name: str
     text: str
+    source_sha256: str | None = None
+    source_pages: tuple[
+        SemanticSourcePage,
+        ...,
+    ] = ()
+    source_format: Literal[
+        "text",
+        "pdf",
+    ] = "text"
 
 
 @dataclass
@@ -64,10 +90,22 @@ class SemanticCandidate:
     source_name: str
     source_text: str
     source_block_id: str | None
-
     extraction: dict[str, Any]
-
     adapter_result: AIConstraintAdapterResult
+
+    source_sha256: str | None = None
+    source_page: int | None = None
+    source_pages: tuple[int, ...] = ()
+    source_location_candidates: tuple[
+        int,
+        ...,
+    ] = ()
+    source_location_status: str = (
+        "SOURCE_LOCATION_NOT_APPLICABLE"
+    )
+    source_location_review: (
+        SourceLocationReviewRecord | None
+    ) = None
 
     approved: bool = False
     applied: bool = False
@@ -77,6 +115,16 @@ class SemanticCandidate:
         self,
     ) -> bool:
         return self.adapter_result.accepted
+
+    @property
+    def source_location_ready(
+        self,
+    ) -> bool:
+        return self.source_location_status in {
+            "SOURCE_LOCATION_NOT_APPLICABLE",
+            "SOURCE_LOCATION_RESOLVED",
+            "SOURCE_LOCATION_HUMAN_CONFIRMED",
+        }
 
     @property
     def constraint_id(
@@ -217,6 +265,245 @@ def _build_candidate_id(
     )
 
 
+_PAGE_MARKER_LINE = re.compile(
+    r"(?m)^\s*===== PDF PAGE \d+ =====\s*$"
+)
+
+
+def _normalized_source_text(
+    value: str,
+) -> str:
+    without_markers = _PAGE_MARKER_LINE.sub(
+        " ",
+        value,
+    )
+
+    return " ".join(
+        without_markers.split()
+    )
+
+
+def _resolve_candidate_source_location(
+    document: SemanticDocument,
+    source_text: str,
+) -> tuple[
+    str,
+    int | None,
+    tuple[int, ...],
+    tuple[int, ...],
+]:
+    if document.source_format != "pdf":
+        return (
+            "SOURCE_LOCATION_NOT_APPLICABLE",
+            None,
+            (),
+            (),
+        )
+
+    page_numbers = {
+        page.page_number
+        for page in document.source_pages
+    }
+
+    explicit_pages = extract_explicit_source_pages(
+        source_text
+    )
+
+    normalized_block = _normalized_source_text(
+        source_text
+    )
+
+    if explicit_pages:
+        if (
+            not normalized_block
+            or any(
+                page not in page_numbers
+                for page in explicit_pages
+            )
+        ):
+            return (
+                "SOURCE_LOCATION_MISMATCH",
+                None,
+                (),
+                explicit_pages,
+            )
+
+        referenced_text = " ".join(
+            _normalized_source_text(
+                page.text
+            )
+            for page in document.source_pages
+            if page.page_number in explicit_pages
+        )
+
+        if normalized_block not in referenced_text:
+            return (
+                "SOURCE_LOCATION_MISMATCH",
+                None,
+                (),
+                explicit_pages,
+            )
+
+        return (
+            "SOURCE_LOCATION_RESOLVED",
+            select_single_source_page(
+                explicit_pages
+            ),
+            explicit_pages,
+            explicit_pages,
+        )
+
+    if not normalized_block:
+        return (
+            "SOURCE_LOCATION_UNRESOLVED",
+            None,
+            (),
+            (),
+        )
+
+    matched_pages = tuple(
+        page.page_number
+        for page in document.source_pages
+        if normalized_block
+        in _normalized_source_text(
+            page.text
+        )
+    )
+
+    if not matched_pages:
+        return (
+            "SOURCE_LOCATION_UNRESOLVED",
+            None,
+            (),
+            (),
+        )
+
+    if len(matched_pages) > 1:
+        return (
+            "SOURCE_LOCATION_AMBIGUOUS",
+            None,
+            (),
+            matched_pages,
+        )
+
+    return (
+        "SOURCE_LOCATION_RESOLVED",
+        matched_pages[0],
+        matched_pages,
+        matched_pages,
+    )
+
+
+def confirm_ambiguous_source_location(
+    candidate: SemanticCandidate,
+    selected_page: int,
+    confirmed: bool,
+) -> SemanticCandidate:
+    """
+    Record an engineer's source-page choice without changing the
+    extracted semantic constraint or approving that constraint.
+    """
+
+    updated = deepcopy(candidate)
+
+    if candidate.source_location_status not in {
+        "SOURCE_LOCATION_AMBIGUOUS",
+        "SOURCE_LOCATION_HUMAN_CONFIRMED",
+    }:
+        raise ValueError(
+            "Only an ambiguous source location can be human-resolved."
+        )
+
+    if selected_page not in candidate.source_location_candidates:
+        raise ValueError(
+            "Selected source page is not one of the exact matches."
+        )
+
+    if not confirmed:
+        updated.source_page = None
+        updated.source_pages = ()
+        updated.source_location_status = (
+            "SOURCE_LOCATION_AMBIGUOUS"
+        )
+        updated.source_location_review = None
+        return updated
+
+    if not candidate.source_sha256:
+        raise ValueError(
+            "PDF source identity is missing."
+        )
+
+    updated.source_page = selected_page
+    updated.source_pages = (selected_page,)
+    updated.source_location_status = (
+        "SOURCE_LOCATION_HUMAN_CONFIRMED"
+    )
+    updated.source_location_review = (
+        SourceLocationReviewRecord(
+            candidate_id=candidate.candidate_id,
+            source_sha256=candidate.source_sha256,
+            selected_page=selected_page,
+            confirmed=True,
+        )
+    )
+    return updated
+
+
+def build_semantic_documents_signature(
+    documents: Sequence[SemanticDocument],
+) -> str:
+    payload = [
+        {
+            "role": document.role,
+            "source_name": document.source_name,
+            "source_sha256": document.source_sha256,
+            "source_format": document.source_format,
+            "text": document.text,
+        }
+        for document in documents
+    ]
+
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    return hashlib.sha256(
+        serialized.encode("utf-8")
+    ).hexdigest()
+
+
+def build_semantic_review_signature(
+    analysis: SemanticAnalysisResult,
+    approved_candidate_ids: Sequence[str],
+) -> str:
+    approved = set(approved_candidate_ids)
+    payload = [
+        {
+            "candidate_id": candidate.candidate_id,
+            "approved": candidate.candidate_id in approved,
+            "source_location_status": (
+                candidate.source_location_status
+            ),
+            "source_pages": candidate.source_pages,
+        }
+        for candidate in analysis.candidates
+    ]
+
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    return hashlib.sha256(
+        serialized.encode("utf-8")
+    ).hexdigest()
+
+
 def analyze_semantic_documents(
     documents: Sequence[
         SemanticDocument
@@ -333,6 +620,16 @@ def analyze_semantic_documents(
                 )
             )
 
+            (
+                source_location_status,
+                source_page,
+                source_pages,
+                source_location_candidates,
+            ) = _resolve_candidate_source_location(
+                document,
+                adapter_result.source_text,
+            )
+
             candidates.append(
                 SemanticCandidate(
                     candidate_id=(
@@ -349,6 +646,17 @@ def analyze_semantic_documents(
                     ),
                     source_block_id=(
                         source_block_id
+                    ),
+                    source_sha256=(
+                        document.source_sha256
+                    ),
+                    source_page=source_page,
+                    source_pages=source_pages,
+                    source_location_candidates=(
+                        source_location_candidates
+                    ),
+                    source_location_status=(
+                        source_location_status
                     ),
                     extraction=data,
                     adapter_result=(
@@ -462,6 +770,16 @@ def apply_semantic_approvals(
             )
             continue
 
+        if not candidate.source_location_ready:
+            issues.append(
+                (
+                    f"{candidate.candidate_id}: "
+                    "Source location review is incomplete: "
+                    f"{candidate.source_location_status}."
+                )
+            )
+            continue
+
         if not candidate.approved:
             issues.append(
                 (
@@ -482,7 +800,9 @@ def apply_semantic_approvals(
         candidate.applied = True
 
         source_pages = (
-            extract_explicit_source_pages(
+            candidate.source_pages
+            if candidate.source_pages
+            else extract_explicit_source_pages(
                 candidate.source_text
             )
         )
@@ -514,6 +834,9 @@ def apply_semantic_approvals(
                 source_name=(
                     candidate.source_name
                 ),
+                source_sha256=(
+                    candidate.source_sha256
+                ),
                 source_text=(
                     candidate.source_text
                 ),
@@ -528,6 +851,9 @@ def apply_semantic_approvals(
                 ),
                 source_reference=(
                     source_reference
+                ),
+                source_location_status=(
+                    candidate.source_location_status
                 ),
             )
         )

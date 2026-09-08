@@ -1,5 +1,6 @@
 import hashlib
 import re
+from copy import deepcopy
 
 import streamlit as st
 
@@ -7,6 +8,20 @@ from src.application.semantic_ingress import (
     SemanticDocument,
     analyze_semantic_documents,
     apply_semantic_approvals,
+    build_semantic_documents_signature,
+    build_semantic_review_signature,
+    confirm_ambiguous_source_location,
+)
+from src.application.pdf_ingress import (
+    build_pdf_page_preview,
+    build_semantic_document,
+    ingest_pdf_document,
+    validate_pdf_document_set,
+)
+from src.application.result_presentation import (
+    build_derived_value_view,
+    build_gap_classification_rows,
+    format_constraint,
 )
 from src.application.escape_execution import (
     run_verification_escape_workflow,
@@ -53,99 +68,12 @@ st.caption(
 # HELPERS
 # =========================================================
 
-def build_input_signature(
-    requirement_text: str,
-    verification_text: str,
-) -> str:
-    payload = (
-        requirement_text
-        + "\n---VERIFICATION---\n"
-        + verification_text
-    )
-
-    return hashlib.sha256(
-        payload.encode("utf-8")
-    ).hexdigest()
-
-
 def safe_key(
     value: str,
 ) -> str:
     return hashlib.sha256(
         value.encode("utf-8")
     ).hexdigest()[:10]
-
-
-def format_constraint(
-    extraction: dict,
-) -> str:
-    kind = extraction.get(
-        "type"
-    )
-
-    unit = extraction.get(
-        "unit"
-    ) or ""
-
-    variable = extraction.get(
-        "variable"
-    )
-
-    if kind == "range":
-        return (
-            f"{extraction.get('min')} ≤ "
-            f"{variable} ≤ "
-            f"{extraction.get('max')} "
-            f"{unit}"
-        ).strip()
-
-    if kind == "lower_bound":
-        return (
-            f"{variable} ≥ "
-            f"{extraction.get('min')} "
-            f"{unit}"
-        ).strip()
-
-    if kind == "upper_bound":
-        return (
-            f"{variable} ≤ "
-            f"{extraction.get('max')} "
-            f"{unit}"
-        ).strip()
-
-    if kind == "difference_min":
-        return (
-            f"{extraction.get('left')} - "
-            f"{extraction.get('right')} ≥ "
-            f"{extraction.get('limit')} "
-            f"{unit}"
-        ).strip()
-
-    if kind == "abs_difference_max":
-        return (
-            f"|{extraction.get('left')} - "
-            f"{extraction.get('right')}| ≤ "
-            f"{extraction.get('limit')} "
-            f"{unit}"
-        ).strip()
-
-    if kind == "sum_upper":
-        variables = " + ".join(
-            extraction.get(
-                "variables",
-                [],
-            )
-        )
-
-        return (
-            f"{variables} ≤ "
-            f"{extraction.get('limit')} "
-            f"{unit}"
-        ).strip()
-
-    return str(
-        extraction
-    )
 
 
 def valid_variable_id(
@@ -170,6 +98,7 @@ for key, default in {
     "base_case": None,
     "verification_result": None,
     "verification_review_state": None,
+    "prepared_semantic_review_signature": None,
     "formal_model_revision": 0,
 }.items():
     if key not in st.session_state:
@@ -184,58 +113,169 @@ st.header(
     "1 · Engineering Documents"
 )
 
-left, right = st.columns(2)
-
-with left:
-    st.subheader(
-        "Engineering Requirement"
-    )
-
-    requirement_text = st.text_area(
-        "Requirement document text",
-        height=220,
-        placeholder=(
-            "R1. Hardness H shall be between "
-            "50 HRC and 57 HRC inclusive."
-        ),
-    )
-
-with right:
-    st.subheader(
-        "Verification / Inspection"
-    )
-
-    verification_text = st.text_area(
-        "Verification document text",
-        height=220,
-        placeholder=(
-            "V1. The inspection accepts the part "
-            "when hardness H is at least 50 HRC."
-        ),
-    )
-
-
-current_signature = (
-    build_input_signature(
-        requirement_text,
-        verification_text,
-    )
+input_mode = st.radio(
+    "Document input method",
+    [
+        "PDF Upload",
+        "Text Input",
+    ],
+    horizontal=True,
 )
 
+documents = []
+pdf_documents = []
+source_pdfs = {}
+document_input_ready = False
 
-if st.button(
-    "Analyze Documents",
-    type="primary",
-):
-    documents = []
+left, right = st.columns(2)
+
+if input_mode == "PDF Upload":
+    with left:
+        st.subheader(
+            "Engineering Requirement PDF"
+        )
+        requirement_upload = st.file_uploader(
+            "Upload Requirement PDF",
+            type=["pdf"],
+            key="requirement_pdf_upload",
+        )
+
+    with right:
+        st.subheader(
+            "Verification / Inspection PDF"
+        )
+        verification_upload = st.file_uploader(
+            "Upload Verification PDF",
+            type=["pdf"],
+            key="verification_pdf_upload",
+        )
+
+    uploads = [
+        (
+            "requirement",
+            requirement_upload,
+        ),
+        (
+            "verification",
+            verification_upload,
+        ),
+    ]
+
+    for role, upload in uploads:
+        if upload is None:
+            continue
+
+        pdf_document = ingest_pdf_document(
+            role=role,
+            filename=upload.name,
+            content=upload.getvalue(),
+        )
+        pdf_documents.append(pdf_document)
+
+        container = left if role == "requirement" else right
+
+        with container:
+            if pdf_document.ready_for_semantic_analysis:
+                st.success(
+                    f"{pdf_document.filename} · "
+                    f"{pdf_document.total_pages} page(s)"
+                )
+                st.caption(
+                    "SHA-256 · "
+                    + pdf_document.content_sha256
+                )
+            else:
+                st.error(
+                    f"PDF ingestion blocked · {pdf_document.status}"
+                )
+
+            for issue in pdf_document.issues:
+                if issue.severity == "ERROR":
+                    st.error(
+                        f"{issue.code} · {issue.message}"
+                    )
+                else:
+                    st.warning(
+                        f"{issue.code} · {issue.message}"
+                    )
+
+    document_set_validation = (
+        validate_pdf_document_set(
+            pdf_documents
+        )
+    )
+
+    for issue in document_set_validation.issues:
+        if issue.code == "PDF_DOCUMENT_NOT_READY":
+            continue
+
+        if issue.severity == "ERROR":
+            st.error(
+                f"{issue.code} · {issue.message}"
+            )
+        else:
+            st.warning(
+                f"{issue.code} · {issue.message}"
+            )
+
+    document_input_ready = (
+        len(pdf_documents) == 2
+        and document_set_validation.valid
+        and all(
+            document.ready_for_semantic_analysis
+            for document in pdf_documents
+        )
+    )
+
+    if document_input_ready:
+        documents = [
+            build_semantic_document(document)
+            for document in pdf_documents
+        ]
+        source_pdfs = {
+            (
+                document.role,
+                document.content_sha256,
+            ): document
+            for document in pdf_documents
+        }
+    elif len(pdf_documents) < 2:
+        st.info(
+            "Requirement PDF와 Verification PDF를 모두 업로드해 주세요."
+        )
+
+else:
+    with left:
+        st.subheader(
+            "Engineering Requirement"
+        )
+        requirement_text = st.text_area(
+            "Requirement document text",
+            height=220,
+            placeholder=(
+                "R1. Hardness H shall be between "
+                "50 HRC and 57 HRC inclusive."
+            ),
+        )
+
+    with right:
+        st.subheader(
+            "Verification / Inspection"
+        )
+        verification_text = st.text_area(
+            "Verification document text",
+            height=220,
+            placeholder=(
+                "V1. The inspection accepts the part "
+                "when hardness H is at least 50 HRC."
+            ),
+        )
 
     if requirement_text.strip():
         documents.append(
             SemanticDocument(
                 role="requirement",
-                source_name=(
-                    "requirement_input"
-                ),
+                source_name="requirement_input",
                 text=requirement_text,
             )
         )
@@ -244,16 +284,30 @@ if st.button(
         documents.append(
             SemanticDocument(
                 role="verification",
-                source_name=(
-                    "verification_input"
-                ),
+                source_name="verification_input",
                 text=verification_text,
             )
         )
 
-    if not documents:
+    document_input_ready = bool(documents)
+
+
+current_signature = (
+    build_semantic_documents_signature(
+        documents
+    )
+    if documents
+    else None
+)
+
+
+if st.button(
+    "Analyze Documents",
+    type="primary",
+):
+    if not document_input_ready:
         st.warning(
-            "분석할 Engineering Requirement 또는 Verification 문서를 입력해 주세요."
+            "분석할 Requirement와 Verification 문서를 확인해 주세요."
         )
 
     else:
@@ -270,9 +324,11 @@ if st.button(
             for state_key in list(
                 st.session_state.keys()
             ):
-                if state_key.startswith(
-                    "semantic_approval_"
-                ):
+                if state_key.startswith((
+                    "semantic_approval_",
+                    "source_location_page_",
+                    "source_location_confirm_",
+                )):
                     del st.session_state[
                         state_key
                     ]
@@ -287,6 +343,10 @@ if st.button(
 
             st.session_state[
                 "verification_review_state"
+            ] = None
+
+            st.session_state[
+                "prepared_semantic_review_signature"
             ] = None
 
             st.session_state[
@@ -341,6 +401,7 @@ if analysis is not None:
         )
 
     approved_candidate_ids = []
+    analysis = deepcopy(analysis)
 
     for index, candidate in enumerate(
         analysis.candidates,
@@ -356,13 +417,205 @@ if analysis is not None:
         with st.container(
             border=True
         ):
-            top_left, top_right = (
-                st.columns(
-                    [4, 1]
-                )
+            source_column, semantics_column = (
+                st.columns(2)
             )
 
-            with top_left:
+            preview_page = candidate.source_page
+
+            with source_column:
+                st.subheader(
+                    "Source Evidence"
+                )
+
+                source = candidate.source_name
+                block = (
+                    candidate.source_block_id
+                    or "—"
+                )
+
+                st.caption(
+                    f"{source} · Block {block}"
+                )
+
+                if candidate.source_sha256:
+                    st.caption(
+                        "SHA-256 · "
+                        + candidate.source_sha256
+                    )
+
+                if (
+                    candidate.source_location_status
+                    == "SOURCE_LOCATION_AMBIGUOUS"
+                ):
+                    st.warning(
+                        "Source Location Review Required"
+                    )
+                    st.write(
+                        "Candidate source block found on: "
+                        + ", ".join(
+                            "Page " + str(page)
+                            for page in candidate
+                            .source_location_candidates
+                        )
+                    )
+
+                    selected_page = st.selectbox(
+                        "Select the source page",
+                        candidate.source_location_candidates,
+                        format_func=(
+                            lambda page: f"Page {page}"
+                        ),
+                        key=(
+                            "source_location_page_"
+                            + safe_key(
+                                candidate.candidate_id
+                            )
+                        ),
+                    )
+                    source_confirmed = st.checkbox(
+                        "Confirm this source location",
+                        key=(
+                            "source_location_confirm_"
+                            + safe_key(
+                                candidate.candidate_id
+                            )
+                        ),
+                    )
+                    preview_page = selected_page
+
+                    if source_confirmed:
+                        try:
+                            candidate = (
+                                confirm_ambiguous_source_location(
+                                    candidate,
+                                    selected_page,
+                                    True,
+                                )
+                            )
+                            analysis.candidates[
+                                index - 1
+                            ] = candidate
+                            st.success(
+                                "Source page confirmed separately "
+                                "from semantic approval."
+                            )
+                        except ValueError as exc:
+                            st.error(str(exc))
+
+                elif candidate.source_location_status in {
+                    "SOURCE_LOCATION_UNRESOLVED",
+                    "SOURCE_LOCATION_MISMATCH",
+                }:
+                    st.error(
+                        "Source location blocked · "
+                        + format_code_label(
+                            candidate.source_location_status
+                        )
+                    )
+
+                elif candidate.source_pages:
+                    st.success(
+                        "Source location · "
+                        + ", ".join(
+                            f"Page {page}"
+                            for page in candidate.source_pages
+                        )
+                    )
+
+                    if len(candidate.source_pages) > 1:
+                        preview_page = st.selectbox(
+                            "Preview source page",
+                            candidate.source_pages,
+                            format_func=(
+                                lambda page: f"Page {page}"
+                            ),
+                            key=(
+                                "source_preview_page_"
+                                + safe_key(
+                                    candidate.candidate_id
+                                )
+                            ),
+                        )
+
+                pdf_document = source_pdfs.get(
+                    (
+                        candidate.role,
+                        candidate.source_sha256,
+                    )
+                )
+
+                if (
+                    pdf_document is not None
+                    and preview_page is not None
+                ):
+                    try:
+                        st.pdf(
+                            build_pdf_page_preview(
+                                pdf_document,
+                                preview_page,
+                            ),
+                            height=480,
+                            key=(
+                                "pdf_preview_"
+                                + safe_key(
+                                    candidate.candidate_id
+                                    + ":"
+                                    + str(preview_page)
+                                )
+                            ),
+                        )
+
+                        page_record = (
+                            pdf_document.page(
+                                preview_page
+                            )
+                        )
+
+                        if page_record is not None:
+                            with st.expander(
+                                "Extracted page text"
+                            ):
+                                st.code(
+                                    page_record.text,
+                                    language=None,
+                                )
+                    except Exception as exc:
+                        st.error(
+                            "PDF page preview failed: "
+                            + str(exc)
+                        )
+
+                elif pdf_document is not None:
+                    with st.expander(
+                        "View original PDF"
+                    ):
+                        try:
+                            st.pdf(
+                                pdf_document.raw_bytes,
+                                height=480,
+                                key=(
+                                    "pdf_document_"
+                                    + safe_key(
+                                        candidate.candidate_id
+                                    )
+                                ),
+                            )
+                        except Exception as exc:
+                            st.error(
+                                "PDF preview failed: "
+                                + str(exc)
+                            )
+
+                with st.expander(
+                    "Candidate source block"
+                ):
+                    st.code(
+                        candidate.source_text,
+                        language=None,
+                    )
+
+            with semantics_column:
                 st.subheader(
                     f"{role_label} "
                     f"{candidate.constraint_id}"
@@ -375,61 +628,73 @@ if analysis is not None:
                     )
                 )
 
-            with top_right:
-                if candidate.adapter_accepted:
+                st.caption(
+                    "Constraint Type · "
+                    + format_code_label(
+                        str(
+                            candidate.extraction.get(
+                                "type",
+                                "unknown",
+                            )
+                        )
+                    )
+                    + " · Unit · "
+                    + str(
+                        candidate.extraction.get(
+                            "unit"
+                        )
+                        or "—"
+                    )
+                )
+
+                if (
+                    candidate.adapter_accepted
+                    and candidate.source_location_ready
+                ):
                     st.success(
                         "Ready for review"
+                    )
+                elif (
+                    candidate.source_location_status
+                    == "SOURCE_LOCATION_AMBIGUOUS"
+                ):
+                    st.warning(
+                        "Confirm the source page before "
+                        "semantic approval."
                     )
                 else:
                     st.error(
                         "Blocked"
                     )
 
-            source = (
-                candidate.source_name
-            )
+                with st.expander(
+                    "Advanced · Raw extraction"
+                ):
+                    st.json(
+                        candidate.extraction
+                    )
 
-            block = (
-                candidate.source_block_id
-                or "—"
-            )
-
-            st.caption(
-                f"Source · {source} · "
-                f"Block {block}"
-            )
-
-            with st.expander(
-                "View original evidence"
-            ):
-                st.code(
-                    candidate.source_text,
-                    language=None,
+                approved = st.checkbox(
+                    "Approve this semantic interpretation",
+                    key=(
+                        "semantic_approval_"
+                        + candidate.candidate_id
+                    ),
+                    disabled=(
+                        not candidate.adapter_accepted
+                        or not candidate.source_location_ready
+                        or not analysis_is_current
+                    ),
                 )
 
-            with st.expander(
-                "Advanced · Raw extraction"
-            ):
-                st.json(
-                    candidate.extraction
-                )
-
-            approved = st.checkbox(
-                "Approve this semantic interpretation",
-                key=(
-                    "semantic_approval_"
-                    + candidate.candidate_id
-                ),
-                disabled=(
-                    not candidate.adapter_accepted
-                    or not analysis_is_current
-                ),
-            )
-
-            if approved:
-                approved_candidate_ids.append(
-                    candidate.candidate_id
-                )
+                if (
+                    approved
+                    and candidate.adapter_accepted
+                    and candidate.source_location_ready
+                ):
+                    approved_candidate_ids.append(
+                        candidate.candidate_id
+                    )
 
     all_semantics_approved = (
         analysis_is_current
@@ -441,6 +706,13 @@ if analysis is not None:
         )
         == len(
             analysis.candidates
+        )
+    )
+
+    current_semantic_review_signature = (
+        build_semantic_review_signature(
+            analysis,
+            approved_candidate_ids,
         )
     )
 
@@ -465,7 +737,8 @@ if analysis is not None:
         st.divider()
 
         st.header(
-            "3 · Variables & Feasible Domain"
+            "3 · Variables & Feasible Domain / "
+            "Engineer-Supplied Operating Evidence"
         )
 
         st.caption(
@@ -541,6 +814,20 @@ if analysis is not None:
                 else ""
             )
 
+            group_type, _, group_value = (
+                group_key.partition(":")
+            )
+            existing_mapping_suggestion = (
+                group_value
+                if (
+                    group_type == "symbol"
+                    and valid_variable_id(
+                        group_value
+                    )
+                )
+                else ""
+            )
+
             with st.container(
                 border=True
             ):
@@ -582,6 +869,9 @@ if analysis is not None:
                     canonical_id = (
                         st.text_input(
                             "Canonical Variable ID",
+                            value=(
+                                existing_mapping_suggestion
+                            ),
                             placeholder="예: H",
                             key=(
                                 "canonical_"
@@ -889,6 +1179,10 @@ if analysis is not None:
                 ] = base_case
 
                 st.session_state[
+                    "prepared_semantic_review_signature"
+                ] = current_semantic_review_signature
+
+                st.session_state[
                     "formal_model_revision"
                 ] += 1
 
@@ -910,12 +1204,24 @@ if analysis is not None:
                 )
 
 
-# A prepared model must never survive removal of
-# semantic approval or a stale document analysis.
+# A prepared model must never survive a changed semantic approval,
+# source-page review, or stale document analysis.
 if (
     analysis is not None
     and "all_semantics_approved" in locals()
-    and not all_semantics_approved
+    and (
+        not all_semantics_approved
+        or (
+            st.session_state[
+                "prepared_semantic_review_signature"
+            ]
+            is not None
+            and st.session_state[
+                "prepared_semantic_review_signature"
+            ]
+            != current_semantic_review_signature
+        )
+    )
 ):
     if (
         st.session_state["mapped_analysis"]
@@ -940,11 +1246,15 @@ if (
         ] = None
 
         st.session_state[
+            "prepared_semantic_review_signature"
+        ] = None
+
+        st.session_state[
             "formal_model_revision"
         ] += 1
 
         st.info(
-            "Semantic approval state changed. "
+            "Semantic approval or source-location review changed. "
             "The prepared formal model has been invalidated."
         )
 
@@ -1080,7 +1390,7 @@ if (
         )
 
     st.subheader(
-        "Feasible Domain"
+        "Feasible Domain / Engineer-Supplied Operating Evidence"
     )
 
     st.dataframe(
@@ -1458,6 +1768,18 @@ if verification_result is not None:
                         hide_index=True,
                     )
 
+                    requirement_spec = next(
+                        (
+                            requirement
+                            for requirement
+                            in verification_result
+                            .case.requirements
+                            if requirement.id
+                            == stress_result.requirement_id
+                        ),
+                        None,
+                    )
+
                     details_left, details_right = (
                         st.columns(2)
                     )
@@ -1471,17 +1793,11 @@ if verification_result is not None:
                                 "Worst Violation",
                                 format_value_with_unit(
                                     stress_result.worst_violation,
-                                    next(
-                                        (
-                                            requirement.unit
-                                            for requirement
-                                            in verification_result
-                                            .case.requirements
-                                            if requirement.id
-                                            == stress_result
-                                            .requirement_id
-                                        ),
-                                        None,
+                                    (
+                                        requirement_spec.unit
+                                        if requirement_spec
+                                        is not None
+                                        else None
                                     ),
                                 ),
                             )
@@ -1497,6 +1813,22 @@ if verification_result is not None:
                                     stress_result
                                     .direction
                                 ),
+                            )
+
+                    if requirement_spec is not None:
+                        derived_value = (
+                            build_derived_value_view(
+                                requirement_spec,
+                                stress_result.actual_value,
+                            )
+                        )
+
+                        if derived_value is not None:
+                            st.metric(
+                                derived_value.label
+                                + " · "
+                                + derived_value.expression,
+                                derived_value.value,
                             )
 
                     st.caption(
@@ -1562,6 +1894,38 @@ if verification_result is not None:
             )
 
 
+    gap_classification = getattr(
+        verification_result,
+        "gap_classification",
+        None,
+    )
+
+    if gap_classification is not None:
+        st.subheader(
+            "Gap Classification"
+        )
+        st.caption(
+            "Report status · "
+            + format_code_label(
+                gap_classification.status
+            )
+        )
+        st.dataframe(
+            build_gap_classification_rows(
+                gap_classification
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+
+        with st.expander(
+            "Advanced · Classification codes"
+        ):
+            st.json(
+                gap_classification.to_dict()
+            )
+
+
     with st.expander(
         "Assurance Report"
     ):
@@ -1621,6 +1985,38 @@ if verification_result is not None:
                     reference
                 )
             )
+
+            provenance_details = []
+
+            if evidence.source_sha256:
+                provenance_details.append(
+                    "SHA-256 "
+                    + evidence.source_sha256
+                )
+
+            if evidence.source_pages:
+                provenance_details.append(
+                    "Page "
+                    + ", ".join(
+                        str(page)
+                        for page
+                        in evidence.source_pages
+                    )
+                )
+
+            if evidence.source_location_status:
+                provenance_details.append(
+                    format_code_label(
+                        evidence.source_location_status
+                    )
+                )
+
+            if provenance_details:
+                st.caption(
+                    " · ".join(
+                        provenance_details
+                    )
+                )
 
             st.code(
                 evidence.source_text,

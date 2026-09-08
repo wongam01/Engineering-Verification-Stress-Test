@@ -5,8 +5,24 @@
 설계·기술 요구조건과 실제 검사·시험 기준을 비교하여,  
 **검사에서는 합격하지만 실제 설계 요구조건은 위반하는 상태**가 존재하는지를 탐색합니다.
 
-현재는 결정론적 Solver인 **Z3**를 기반으로 핵심 검증 엔진을 개발하고 있으며,  
-향후 AI를 이용한 도면·Specification·Inspection Plan의 조건 추출 기능을 연결하는 것을 목표로 합니다.
+현재는 AI가 text-based Requirement/Verification PDF에서 지원되는 조건 후보를 추출하고,
+Engineer의 검토와 근거 기반 Feasible Domain 입력을 거쳐 결정론적 Solver인 **Z3**가
+검증계획의 escape를 계산하는 prototype을 제공합니다.
+
+## 실행
+
+Python virtual environment에서 다음 순서로 실행합니다.
+
+```bash
+python -m pip install -r requirements.txt
+export OPENAI_API_KEY="your-api-key"
+python -m streamlit run src/ui/app.py
+```
+
+현재 PDF ingress는 extractable text가 있는 PDF만 지원합니다. OCR, scanned/image-only PDF,
+암호화 PDF, 임의 형식의 모든 engineering document에 대한 자동 이해는 지원하지 않습니다.
+Requirement와 Verification의 AI extraction 결과는 반드시 사람이 검토해야 하며,
+Feasible Domain은 별도의 Engineer-Supplied Operating Evidence로 입력합니다.
 
 ---
 
