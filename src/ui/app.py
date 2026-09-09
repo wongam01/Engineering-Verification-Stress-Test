@@ -20,7 +20,6 @@ from src.application.pdf_ingress import (
 )
 from src.application.result_presentation import (
     build_derived_value_view,
-    build_gap_classification_rows,
     format_constraint,
 )
 from src.application.escape_execution import (
@@ -49,18 +48,33 @@ from src.core.models import (
 
 st.set_page_config(
     page_title=(
-        "Engineering Verification Stress Test"
+        "공학 검증 스트레스 테스트"
     ),
     layout="wide",
 )
 
 st.title(
-    "Engineering Verification Stress Test"
+    "공학 검증 스트레스 테스트"
 )
 
 st.caption(
+    "Engineering Verification Stress Test · "
     "Document Evidence → Engineering Semantics "
     "→ Formal Counterexample"
+)
+
+st.markdown(
+    "**① 문서 입력**  →  "
+    "**② 공학 데이터 추출**  →  "
+    "**③ 검증 모델 및 검토**  →  "
+    "**④ 검증 결과**"
+)
+
+st.caption(
+    "PDF 무결성 · Source Provenance · Semantic Review · "
+    "Variable Mapping · Feasible Domain · "
+    "Scope / Assurance · Formal Human Review · "
+    "Deterministic Solver"
 )
 
 
@@ -110,16 +124,20 @@ for key, default in {
 # =========================================================
 
 st.header(
-    "1 · Engineering Documents"
+    "1 · 문서 입력 (Documents)"
 )
 
 input_mode = st.radio(
-    "Document input method",
+    "문서 입력 방식",
     [
         "PDF Upload",
         "Text Input",
     ],
     horizontal=True,
+    format_func=lambda mode: {
+        "PDF Upload": "PDF 업로드",
+        "Text Input": "텍스트 입력",
+    }[mode],
 )
 
 documents = []
@@ -132,20 +150,20 @@ left, right = st.columns(2)
 if input_mode == "PDF Upload":
     with left:
         st.subheader(
-            "Engineering Requirement PDF"
+            "설계 요구조건 문서 (Requirement PDF)"
         )
         requirement_upload = st.file_uploader(
-            "Upload Requirement PDF",
+            "Requirement PDF 업로드",
             type=["pdf"],
             key="requirement_pdf_upload",
         )
 
     with right:
         st.subheader(
-            "Verification / Inspection PDF"
+            "검사 기준 문서 (Verification PDF)"
         )
         verification_upload = st.file_uploader(
-            "Upload Verification PDF",
+            "Verification PDF 업로드",
             type=["pdf"],
             key="verification_pdf_upload",
         )
@@ -180,10 +198,20 @@ if input_mode == "PDF Upload":
                     f"{pdf_document.filename} · "
                     f"{pdf_document.total_pages} page(s)"
                 )
-                st.caption(
-                    "SHA-256 · "
-                    + pdf_document.content_sha256
-                )
+                with st.expander(
+                    "문서 세부정보 (Advanced)"
+                ):
+                    st.caption(
+                        "SHA-256 · "
+                        + pdf_document.content_sha256
+                    )
+                    st.caption(
+                        "Role · " + pdf_document.role
+                    )
+                    st.caption(
+                        "Pages · "
+                        + str(pdf_document.total_pages)
+                    )
             else:
                 st.error(
                     f"PDF ingestion blocked · {pdf_document.status}"
@@ -302,7 +330,7 @@ current_signature = (
 
 
 if st.button(
-    "Analyze Documents",
+    "문서 분석 시작 (Analyze Documents)",
     type="primary",
 ):
     if not document_input_ready:
@@ -313,7 +341,7 @@ if st.button(
     else:
         try:
             with st.spinner(
-                "Engineering semantics 분석 중..."
+                "문서에서 공학 의미 (Engineering Semantics)를 추출하고 있습니다..."
             ):
                 analysis = (
                     analyze_semantic_documents(
@@ -384,7 +412,7 @@ if analysis is not None:
     st.divider()
 
     st.header(
-        "2 · Extracted Engineering Semantics"
+        "2 · 공학 데이터 추출 (Engineering Extraction)"
     )
 
     analysis_is_current = (
@@ -408,10 +436,10 @@ if analysis is not None:
         start=1,
     ):
         role_label = (
-            "Requirement"
+            "설계 요구조건 (Requirement)"
             if candidate.role
             == "requirement"
-            else "Verification"
+            else "검사 기준 (Verification Criterion)"
         )
 
         with st.container(
@@ -425,7 +453,7 @@ if analysis is not None:
 
             with source_column:
                 st.subheader(
-                    "Source Evidence"
+                    "원문 근거 (Source Evidence)"
                 )
 
                 source = candidate.source_name
@@ -439,10 +467,21 @@ if analysis is not None:
                 )
 
                 if candidate.source_sha256:
-                    st.caption(
-                        "SHA-256 · "
-                        + candidate.source_sha256
-                    )
+                    with st.expander(
+                        "원문 추적 정보 (Advanced)"
+                    ):
+                        st.caption(
+                            "SHA-256 · "
+                            + candidate.source_sha256
+                        )
+                        st.caption(
+                            "Block · "
+                            + str(block)
+                        )
+                        st.caption(
+                            "Candidate ID · "
+                            + candidate.candidate_id
+                        )
 
                 if (
                     candidate.source_location_status
@@ -549,42 +588,44 @@ if analysis is not None:
                     pdf_document is not None
                     and preview_page is not None
                 ):
-                    try:
-                        st.pdf(
-                            build_pdf_page_preview(
-                                pdf_document,
-                                preview_page,
-                            ),
-                            height=480,
-                            key=(
-                                "pdf_preview_"
-                                + safe_key(
-                                    candidate.candidate_id
-                                    + ":"
-                                    + str(preview_page)
-                                )
-                            ),
-                        )
-
-                        page_record = (
-                            pdf_document.page(
-                                preview_page
+                    with st.expander(
+                        "원본 PDF 페이지 보기"
+                    ):
+                        try:
+                            st.pdf(
+                                build_pdf_page_preview(
+                                    pdf_document,
+                                    preview_page,
+                                ),
+                                height=360,
+                                key=(
+                                    "pdf_preview_"
+                                    + safe_key(
+                                        candidate.candidate_id
+                                        + ":"
+                                        + str(preview_page)
+                                    )
+                                ),
                             )
-                        )
+                        except Exception as exc:
+                            st.error(
+                                "PDF page preview failed: "
+                                + str(exc)
+                            )
 
-                        if page_record is not None:
-                            with st.expander(
-                                "Extracted page text"
-                            ):
-                                st.code(
-                                    page_record.text,
-                                    language=None,
-                                )
-                    except Exception as exc:
-                        st.error(
-                            "PDF page preview failed: "
-                            + str(exc)
+                    page_record = (
+                        pdf_document.page(
+                            preview_page
                         )
+                    )
+
+                    if page_record is not None:
+                        with st.expander(
+                            "추출된 페이지 텍스트"
+                        ):
+                            st.write(
+                                page_record.text
+                            )
 
                 elif pdf_document is not None:
                     with st.expander(
@@ -652,7 +693,7 @@ if analysis is not None:
                     and candidate.source_location_ready
                 ):
                     st.success(
-                        "Ready for review"
+                        "검토 준비 완료"
                     )
                 elif (
                     candidate.source_location_status
@@ -668,14 +709,14 @@ if analysis is not None:
                     )
 
                 with st.expander(
-                    "Advanced · Raw extraction"
+                    "고급 정보 · Raw extraction"
                 ):
                     st.json(
                         candidate.extraction
                     )
 
                 approved = st.checkbox(
-                    "Approve this semantic interpretation",
+                    "이 공학 의미 해석을 승인합니다",
                     key=(
                         "semantic_approval_"
                         + candidate.candidate_id
@@ -718,7 +759,7 @@ if analysis is not None:
 
     if all_semantics_approved:
         st.success(
-            "Semantic review complete."
+            "추출 결과 검토가 완료되었습니다."
         )
 
     else:
@@ -737,15 +778,12 @@ if analysis is not None:
         st.divider()
 
         st.header(
-            "3 · Variables & Feasible Domain / "
-            "Engineer-Supplied Operating Evidence"
+            "3 · 검증 모델 및 검토 (Verification Model & Review)"
         )
 
         st.caption(
-            "AI가 추출한 문서 변수명을 "
-            "Canonical Variable ID에 연결하고, "
-            "현실적으로 가능한 상태 범위를 "
-            "근거 자료와 함께 입력해 주세요."
+            "추출된 공학 변수를 검토하고 현실 가능 범위 "
+            "(Feasible Domain)를 공학적 근거와 함께 확인합니다."
         )
 
         targets = (
@@ -836,8 +874,7 @@ if analysis is not None:
                 )
 
                 st.caption(
-                    "Source variable extracted "
-                    "from the document"
+                    "문서에서 추출된 공학 변수"
                 )
 
                 aliases = sorted(
@@ -881,7 +918,7 @@ if analysis is not None:
                     )
 
                     unit = st.text_input(
-                        "Engineering Unit",
+                        "공학 단위 (Engineering Unit)",
                         value=default_unit,
                         key=(
                             "unit_"
@@ -892,7 +929,7 @@ if analysis is not None:
                 with col2:
                     feasible_min = (
                         st.text_input(
-                            "Feasible Minimum",
+                            "현실 가능 최솟값 (Feasible Min)",
                             placeholder="예: 58",
                             key=(
                                 "fmin_"
@@ -903,7 +940,7 @@ if analysis is not None:
 
                     feasible_max = (
                         st.text_input(
-                            "Feasible Maximum",
+                            "현실 가능 최댓값 (Feasible Max)",
                             placeholder="예: 60",
                             key=(
                                 "fmax_"
@@ -914,7 +951,7 @@ if analysis is not None:
 
                 evidence_type = (
                     st.selectbox(
-                        "Feasible Domain Evidence Type",
+                        "현실 가능 근거 유형 (Evidence Type)",
                         [
                             "observed_test_data",
                             "manufacturing_record",
@@ -930,7 +967,7 @@ if analysis is not None:
 
                 evidence_reference = (
                     st.text_input(
-                        "Evidence Reference",
+                        "근거 참조 (Evidence Reference)",
                         placeholder=(
                             "예: hardness_test_report:"
                             "sample_set_A"
@@ -944,8 +981,8 @@ if analysis is not None:
 
                 evidence_confirmed = (
                     st.checkbox(
-                        "I confirm this Feasible "
-                        "Domain is evidence-backed.",
+                        "이 현실 가능 범위가 공학적 근거에 기반함을 "
+                        "확인합니다.",
                         key=(
                             "evidence_confirmed_"
                             + key
@@ -983,7 +1020,7 @@ if analysis is not None:
                 }
 
         if st.button(
-            "Prepare Formal Model",
+            "검증 모델 준비 (Prepare Formal Model)",
             type="primary",
         ):
             try:
@@ -1195,7 +1232,7 @@ if analysis is not None:
                 ] = None
 
                 st.success(
-                    "Formal model preparation complete."
+                    "검증 모델 준비가 완료되었습니다."
                 )
 
             except Exception as exc:
@@ -1328,7 +1365,7 @@ if (
     st.divider()
 
     st.header(
-        "4 · Prepared Formal Model"
+        "검증 모델 미리보기 (Verification Model)"
     )
 
     st.success(
@@ -1336,51 +1373,47 @@ if (
         "Formal Verification Workflow 입력으로 준비되었습니다."
     )
 
-    mapping_rows = []
-
-    for candidate in (
-        mapped_analysis.candidates
-    ):
-        mapping_rows.append(
-            {
-                "Role": candidate.role,
-                "Constraint": (
-                    candidate.constraint_id
-                ),
-                "Formal Semantics": (
-                    format_constraint(
-                        candidate.extraction
-                    )
-                ),
-            }
-        )
-
-    st.dataframe(
-        mapping_rows,
-        width="stretch",
-        hide_index=True,
+    st.subheader(
+        "검증 모델 요약 (Engineering Model Summary)"
     )
 
-    feasible_rows = []
+    model_rows = []
+
+    role_labels = {
+        "requirement":
+            "설계 요구조건 (Requirement)",
+        "verification":
+            "검사 기준 (Verification Criterion)",
+    }
+
+    for candidate in mapped_analysis.candidates:
+        model_rows.append(
+            {
+                "구분": role_labels.get(
+                    candidate.role,
+                    candidate.role,
+                ),
+                "공학 모델": format_constraint(
+                    candidate.extraction
+                ),
+                "참조": candidate.constraint_id,
+            }
+        )
 
     for variable_id, spec in (
         base_case.variables.items()
     ):
-        feasible_rows.append(
+        model_rows.append(
             {
-                "Variable": variable_id,
-                "Unit": spec.unit,
-                "Feasible Min": (
-                    str(
-                        spec.feasible_min
-                    )
+                "구분":
+                    "현실 가능 범위 (Feasible Domain)",
+                "공학 모델": (
+                    f"{spec.feasible_min} ≤ "
+                    f"{variable_id} ≤ "
+                    f"{spec.feasible_max} "
+                    f"{spec.unit}"
                 ),
-                "Feasible Max": (
-                    str(
-                        spec.feasible_max
-                    )
-                ),
-                "Evidence": (
+                "참조": (
                     spec.feasible_evidence
                     .source_reference
                     if spec.feasible_evidence
@@ -1389,14 +1422,16 @@ if (
             }
         )
 
-    st.subheader(
-        "Feasible Domain / Engineer-Supplied Operating Evidence"
-    )
-
     st.dataframe(
-        feasible_rows,
+        model_rows,
         width="stretch",
         hide_index=True,
+    )
+
+    st.caption(
+        "Requirement와 Verification 값은 승인된 문서 추출 "
+        "결과에서 자동으로 연결되며, 현재 Feasible Domain은 "
+        "Engineer-Supplied Operating Evidence입니다."
     )
 
     if (
@@ -1459,7 +1494,7 @@ if (
             st.divider()
 
             st.header(
-                "5 · Formal Human Review"
+                "형식 검토 (Formal Human Review)"
             )
 
             st.error(
@@ -1483,27 +1518,81 @@ if (
             st.divider()
 
             st.header(
-                "5 · Formal Human Review"
+                "형식 검토 (Formal Human Review)"
             )
 
             st.caption(
-                "Engineering review must be completed "
-                "before solver execution. "
-                "Semantic approval alone does not "
-                "authorize formal verification."
+                "Solver 실행 전 독립적인 Formal Human Review가 "
+                "필요합니다. AI 추출 결과의 승인만으로 형식 검증이 "
+                "자동 실행되지는 않습니다."
             )
 
             st.subheader(
-                "Review Summary"
+                "검토 요약 (Review Summary)"
             )
 
-            st.dataframe(
+            review_rows = (
                 build_review_summary_rows(
                     required_targets
-                ),
-                width="stretch",
-                hide_index=True,
+                )
             )
+
+            review_counts = {
+                "Variable": 0,
+                "Requirement": 0,
+                "Verification": 0,
+            }
+
+            for row in review_rows:
+                target_label = str(
+                    row.get("Target", "")
+                )
+
+                for category in review_counts:
+                    if target_label.startswith(
+                        category
+                    ):
+                        review_counts[
+                            category
+                        ] += 1
+                        break
+
+            summary_total, summary_var, summary_req, summary_ver = (
+                st.columns(4)
+            )
+
+            with summary_total:
+                st.metric(
+                    "전체 검토 항목",
+                    len(review_rows),
+                )
+
+            with summary_var:
+                st.metric(
+                    "변수 정의",
+                    review_counts["Variable"],
+                )
+
+            with summary_req:
+                st.metric(
+                    "설계 요구조건",
+                    review_counts["Requirement"],
+                )
+
+            with summary_ver:
+                st.metric(
+                    "검사 기준",
+                    review_counts["Verification"],
+                )
+
+            with st.expander(
+                "세부 검토 항목 (Exact Review Targets)"
+            ):
+                st.dataframe(
+                    review_rows,
+                    width="stretch",
+                    hide_index=True,
+                )
 
             revision = st.session_state[
                 "formal_model_revision"
@@ -1511,10 +1600,9 @@ if (
 
             reviewer_reference = (
                 st.text_input(
-                    "Reviewer Reference",
+                    "검토자 참조 (Reviewer Reference)",
                     placeholder=(
-                        "Reviewer name, employee ID, "
-                        "or traceable review reference"
+                        "검토자 이름, ID 또는 추적 가능한 검토 참조"
                     ),
                     key=(
                         "formal_reviewer_"
@@ -1525,9 +1613,7 @@ if (
 
             final_confirmation = (
                 st.checkbox(
-                    "I confirm that every item in the "
-                    "Review Summary has been reviewed "
-                    "and approved.",
+                    "검토 요약의 모든 항목을 확인하고 승인했습니다.",
                     key=(
                         "formal_review_confirmation_"
                         + str(revision)
@@ -1544,17 +1630,13 @@ if (
                 and reviewer_present
             ):
                 st.success(
-                    "Ready for Verification. "
-                    "The complete Review Summary has "
-                    "been approved."
+                    "검토 완료 · Formal Verification을 실행할 수 있습니다."
                 )
 
             else:
                 st.info(
-                    "Formal verification remains blocked "
-                    "until the final confirmation is "
-                    "checked and a Reviewer Reference "
-                    "is provided."
+                    "검토자 참조와 최종 승인이 완료될 때까지 "
+                    "Formal Verification은 실행되지 않습니다."
                 )
 
             run_enabled = (
@@ -1563,8 +1645,57 @@ if (
                 and reviewer_present
             )
 
+            st.subheader(
+                "검증 파이프라인 상태 "
+                "(Verification Pipeline)"
+            )
+
+            pipeline_left, pipeline_right = (
+                st.columns(2)
+            )
+
+            with pipeline_left:
+                st.success(
+                    "✓ 문서 근거 및 Source Provenance"
+                )
+                st.success(
+                    "✓ 공학 의미 검토 (Semantic Review)"
+                )
+                st.success(
+                    "✓ 변수 매핑 (Variable Mapping)"
+                )
+
+            with pipeline_right:
+                st.success(
+                    "✓ 현실 가능 범위 근거 "
+                    "(Feasible Domain Evidence)"
+                )
+
+                if run_enabled:
+                    st.success(
+                        "✓ 형식 검토 "
+                        "(Formal Human Review)"
+                    )
+                    st.info(
+                        "Deterministic Solver · Ready"
+                    )
+                else:
+                    st.warning(
+                        "○ 형식 검토 "
+                        "(Formal Human Review) · 대기"
+                    )
+                    st.info(
+                        "Deterministic Solver · Blocked"
+                    )
+
+            st.caption(
+                "AI 추출 결과만으로 Solver가 실행되지 않습니다. "
+                "문서 근거, 의미 검토, 변수 매핑, 현실 가능 범위와 "
+                "Formal Human Review가 준비되어야 검증을 실행할 수 있습니다."
+            )
+
             if st.button(
-                "Run Verification",
+                "검증 실행 (Run Verification)",
                 type="primary",
                 disabled=not run_enabled,
             ):
@@ -1625,13 +1756,12 @@ if verification_result is not None:
     st.divider()
 
     st.header(
-        "6 · Verification Result"
+        "4 · 검증 결과 (Verification Result)"
     )
 
     st.caption(
-        "This result corresponds to the most "
-        "recently prepared and formally reviewed "
-        "model."
+        "가장 최근에 준비되고 Formal Human Review를 통과한 "
+        "검증 모델에 대한 결과입니다."
     )
 
     assured_result = (
@@ -1640,7 +1770,7 @@ if verification_result is not None:
 
     if not assured_result.core_executed:
         st.warning(
-            "Formal verification was not executed."
+            "형식 검증이 실행되지 않았습니다."
         )
 
         st.write(
@@ -1672,14 +1802,18 @@ if verification_result is not None:
 
         if pipeline.has_escape:
             st.error(
-                "VERIFICATION ESCAPE DETECTED"
+                "⚠ 검증 이탈 발견 (Verification Escape Found)"
             )
 
             st.markdown(
-                "A feasible state has been identified "
-                "that satisfies the verification "
-                "criterion while violating the "
-                "engineering requirement."
+                "**현재 검사 기준은 설계 요구조건을 위반하는 상태를 "
+                "합격으로 판정할 수 있습니다.**"
+            )
+
+            st.caption(
+                "아래 반례는 AI의 최종 판단이 아니라, "
+                "검토된 공학 제약조건에 대해 Deterministic Solver가 "
+                "계산한 Formal Counterexample입니다."
             )
 
             escape_count = 0
@@ -1700,8 +1834,7 @@ if verification_result is not None:
                     border=True
                 ):
                     st.subheader(
-                        "Counterexample · "
-                        + stress_result.requirement_id
+                        "반례 (Counterexample)"
                     )
 
                     state_rows = []
@@ -1734,39 +1867,62 @@ if verification_result is not None:
                             }
                         )
 
-                    if state_rows:
-                        st.dataframe(
-                            state_rows,
-                            width="stretch",
-                            hide_index=True,
+                    # A scalar case is shown once as the primary
+                    # counterexample metric below. Multi-variable
+                    # witnesses retain their complete state here.
+                    if len(state_rows) > 1:
+                        st.markdown(
+                            "**반례 상태 (Counterexample State)**"
                         )
 
-                    checks = [
-                        {
-                            "Condition": (
-                                "Feasible Domain"
-                            ),
-                            "Status": "PASS",
-                        },
-                        {
-                            "Condition": (
-                                "Verification Criterion"
-                            ),
-                            "Status": "PASS",
-                        },
-                        {
-                            "Condition": (
-                                "Engineering Requirement"
-                            ),
-                            "Status": "FAIL",
-                        },
-                    ]
+                        state_columns = st.columns(
+                            min(len(state_rows), 3)
+                        )
 
-                    st.dataframe(
-                        checks,
-                        width="stretch",
-                        hide_index=True,
+                        for row_index, row in enumerate(
+                            state_rows
+                        ):
+                            column = state_columns[
+                                row_index % len(
+                                    state_columns
+                                )
+                            ]
+
+                            unit_text = (
+                                ""
+                                if row["Unit"] == "—"
+                                else " " + row["Unit"]
+                            )
+
+                            with column:
+                                st.metric(
+                                    row["Variable"],
+                                    row["Value"]
+                                    + unit_text,
+                                )
+
+                    st.markdown(
+                        "**반례가 성립하는 이유**"
                     )
+
+                    check_left, check_mid, check_right = (
+                        st.columns(3)
+                    )
+
+                    with check_left:
+                        st.success(
+                            "현실 가능 범위 (Feasible Domain) · PASS"
+                        )
+
+                    with check_mid:
+                        st.success(
+                            "검사 기준 (Verification Criterion) · PASS"
+                        )
+
+                    with check_right:
+                        st.error(
+                            "설계 요구조건 (Requirement) · FAIL"
+                        )
 
                     requirement_spec = next(
                         (
@@ -1780,17 +1936,38 @@ if verification_result is not None:
                         None,
                     )
 
-                    details_left, details_right = (
-                        st.columns(2)
+                    derived_value = None
+
+                    if requirement_spec is not None:
+                        derived_value = (
+                            build_derived_value_view(
+                                requirement_spec,
+                                stress_result.actual_value,
+                            )
+                        )
+
+                    result_left, result_mid, result_right = (
+                        st.columns(3)
                     )
 
-                    with details_left:
+                    with result_left:
+                        if derived_value is not None:
+                            st.metric(
+                                "반례 값 (Counterexample)",
+                                derived_value.value,
+                                help=(
+                                    "Derived expression: "
+                                    + derived_value.expression
+                                ),
+                            )
+
+                    with result_mid:
                         if (
                             stress_result.worst_violation
                             is not None
                         ):
                             st.metric(
-                                "Worst Violation",
+                                "요구조건 위반량 (Violation)",
                                 format_value_with_unit(
                                     stress_result.worst_violation,
                                     (
@@ -1802,39 +1979,52 @@ if verification_result is not None:
                                 ),
                             )
 
-                    with details_right:
+                    with result_right:
                         if (
                             stress_result.direction
                             is not None
                         ):
-                            st.metric(
-                                "Violation Direction",
+                            direction_display = (
                                 format_code_label(
-                                    stress_result
-                                    .direction
-                                ),
+                                    stress_result.direction
+                                )
                             )
 
-                    if requirement_spec is not None:
-                        derived_value = (
-                            build_derived_value_view(
-                                requirement_spec,
-                                stress_result.actual_value,
+                            direction_display = {
+                                "Above Maximum":
+                                    "허용 상한 초과 "
+                                    "(Above Maximum)",
+                                "Below Minimum":
+                                    "허용 하한 미달 "
+                                    "(Below Minimum)",
+                                "Exceeds Limit":
+                                    "허용 한계 초과 "
+                                    "(Exceeds Limit)",
+                            }.get(
+                                direction_display,
+                                direction_display,
                             )
-                        )
 
-                        if derived_value is not None:
                             st.metric(
-                                derived_value.label
-                                + " · "
-                                + derived_value.expression,
-                                derived_value.value,
+                                "위반 방향 (Direction)",
+                                direction_display,
                             )
 
-                    st.caption(
-                        "Formal condition: "
-                        "F(x) ∧ V(x) ∧ ¬R(x)"
-                    )
+                    with st.expander(
+                        "고급 정보 (Advanced) · Formal Verification"
+                    ):
+                        st.code(
+                            "F(x) ∧ V(x) ∧ ¬R(x)",
+                            language=None,
+                        )
+                        st.caption(
+                            "Requirement ID · "
+                            + stress_result.requirement_id
+                        )
+                        st.caption(
+                            "Pipeline status · "
+                            + str(pipeline.status)
+                        )
 
             if (
                 getattr(
@@ -1854,14 +2044,13 @@ if verification_result is not None:
             False,
         ):
             st.warning(
-                "INDETERMINATE"
+                "판정 불확정 (INDETERMINATE)"
             )
 
             st.markdown(
-                "The analysis could not establish "
-                "either a Verification Escape or "
-                "No Escape for at least one "
-                "requirement."
+                "하나 이상의 요구조건에서 검증 이탈 여부를 "
+                "확정할 수 없었습니다. 이 상태를 "
+                "No Escape로 간주하지 않습니다."
             )
 
         elif (
@@ -1869,20 +2058,21 @@ if verification_result is not None:
             == "NO_ESCAPE_FOUND"
         ):
             st.success(
-                "NO VERIFICATION ESCAPE FOUND"
+                "검증 이탈이 발견되지 않았습니다 "
+                "(No Verification Escape Found)"
             )
 
             st.markdown(
-                "No counterexample was found within "
-                "the modeled feasible domain."
+                "모델링된 현실 가능 범위 안에서 "
+                "검사 기준을 통과하면서 설계 요구조건을 "
+                "위반하는 반례가 발견되지 않았습니다."
             )
 
             st.caption(
-                "This result is limited to the "
-                "modeled requirements, verification "
-                "criteria, feasible domain, and "
-                "supported analysis scope. "
-                "It is not a product safety verdict."
+                "이 결과는 현재 모델링된 Requirement, "
+                "Verification Criterion, Feasible Domain 및 "
+                "지원되는 분석 범위에 한정됩니다. "
+                "제품 안전성에 대한 최종 판정이 아닙니다."
             )
 
         else:
@@ -1902,32 +2092,92 @@ if verification_result is not None:
 
     if gap_classification is not None:
         st.subheader(
-            "Gap Classification"
-        )
-        st.caption(
-            "Report status · "
-            + format_code_label(
-                gap_classification.status
-            )
-        )
-        st.dataframe(
-            build_gap_classification_rows(
-                gap_classification
-            ),
-            width="stretch",
-            hide_index=True,
+            "검증 격차 분류 (Gap Classification)"
         )
 
+        gap_label_ko = {
+            "Acceptance Boundary Gap":
+                "허용 경계 누락",
+            "Relational Acceptance Boundary Gap":
+                "관계형 허용 경계 격차",
+            "Coverage Gap":
+                "검증 범위 누락",
+        }
+
+        gap_explanation_ko = {
+            "Acceptance Boundary Gap": (
+                "검사 기준이 설계 요구조건보다 넓은 허용 범위를 "
+                "인정하여 요구조건의 경계 일부가 검사에서 "
+                "검증되지 않습니다."
+            ),
+            "Relational Acceptance Boundary Gap": (
+                "변수 간 관계에 대한 검사 허용 경계가 "
+                "설계 요구조건보다 넓어 관계형 요구조건 위반이 "
+                "검사를 통과할 수 있습니다."
+            ),
+            "Coverage Gap": (
+                "설계 요구조건을 직접 확인하는 검사 기준이 없어 "
+                "해당 요구조건 위반이 검증 범위에서 누락됩니다."
+            ),
+        }
+
+        for item in gap_classification.items:
+            korean_label = gap_label_ko.get(
+                item.display_label,
+                "검증 격차",
+            )
+
+            with st.container(border=True):
+                st.markdown(
+                    "### "
+                    + korean_label
+                )
+
+                if item.display_label:
+                    st.caption(
+                        item.display_label
+                    )
+
+                korean_explanation = (
+                    gap_explanation_ko.get(
+                        item.display_label
+                    )
+                )
+
+                if korean_explanation:
+                    st.write(
+                        korean_explanation
+                    )
+                elif item.rationale:
+                    st.write(
+                        item.rationale
+                    )
+
+                if item.rationale:
+                    with st.expander(
+                        "분류 근거 원문 (Advanced)"
+                    ):
+                        st.write(
+                            item.rationale
+                        )
+
         with st.expander(
-            "Advanced · Classification codes"
+            "고급 정보 (Advanced) · "
+            "Gap Classification"
         ):
+            st.caption(
+                "Report Status · "
+                + format_code_label(
+                    gap_classification.status
+                )
+            )
             st.json(
                 gap_classification.to_dict()
             )
 
 
     with st.expander(
-        "Assurance Report"
+        "고급 정보 (Advanced) · Assurance Report"
     ):
         rendered_report = getattr(
             verification_result,
@@ -1948,77 +2198,184 @@ if verification_result is not None:
             )
 
 
-    with st.expander(
-        "Evidence Trace"
-    ):
-        evidence_items = getattr(
-            verification_result,
-            "evidence",
-            [],
+    st.subheader(
+        "근거 문서 (Evidence Trace)"
+    )
+
+    st.caption(
+        "검증 모델과 결과가 어떤 원문 근거에서 "
+        "형성되었는지 추적합니다."
+    )
+
+    evidence_items = getattr(
+        verification_result,
+        "evidence",
+        [],
+    )
+
+    if not evidence_items:
+        st.info(
+            "표시할 Evidence Trace가 없습니다."
         )
 
-        if not evidence_items:
-            st.write(
-                "No evidence trace entries "
-                "are available."
+    evidence_role_labels = {
+        "requirement":
+            "설계 요구조건 (Requirement)",
+        "verification":
+            "검사 기준 (Verification Criterion)",
+        "feasible":
+            "현실 가능 근거 (Feasible Evidence)",
+    }
+
+    for evidence in evidence_items:
+        pages = evidence.source_pages
+
+        if (
+            not pages
+            and evidence.source_page is not None
+        ):
+            pages = (
+                evidence.source_page,
             )
 
-        for evidence in evidence_items:
-            reference = (
-                evidence.source_reference
-                or evidence.source_name
+        if evidence.role == "feasible":
+            with st.container(border=True):
+                st.markdown(
+                    "#### 엔지니어 입력 운영 근거 "
+                    "(Engineer-Supplied Operating Evidence)"
+                )
+
+                variable_spec = (
+                    verification_result.case
+                    .variables.get(
+                        evidence.target_id
+                    )
+                )
+
+                if variable_spec is not None:
+                    st.markdown(
+                        "**현실 가능 범위 (Feasible Domain)**"
+                    )
+                    st.markdown(
+                        "### "
+                        + str(
+                            variable_spec.feasible_min
+                        )
+                        + " ≤ "
+                        + evidence.target_id
+                        + " ≤ "
+                        + str(
+                            variable_spec.feasible_max
+                        )
+                        + " "
+                        + str(
+                            variable_spec.unit
+                        )
+                    )
+
+                st.caption(
+                    "근거 참조 · "
+                    + str(
+                        evidence.source_reference
+                        or evidence.source_name
+                    )
+                )
+
+                st.info(
+                    "현재 Phase 5B-0에서는 F가 PDF에서 자동 "
+                    "추출된 값이 아닙니다. 엔지니어가 입력하고 "
+                    "근거 기반임을 확인한 Operating Evidence입니다."
+                )
+
+                with st.expander(
+                    "추적 세부정보 (Advanced)"
+                ):
+                    st.caption(
+                        "Target ID · "
+                        + evidence.target_id
+                    )
+                    st.write(
+                        evidence.source_text
+                    )
+
+            continue
+
+        role_label = {
+            "requirement":
+                "설계 요구조건 (Requirement)",
+            "verification":
+                "검사 기준 (Verification Criterion)",
+        }.get(
+            evidence.role,
+            format_code_label(
+                evidence.role
+            ),
+        )
+
+        with st.container(border=True):
+            st.markdown(
+                "#### " + role_label
+            )
+
+            source_line = evidence.source_name
+
+            if pages:
+                source_line += (
+                    " · Page "
+                    + ", ".join(
+                        str(page)
+                        for page in pages
+                    )
+                )
+
+            st.caption(
+                source_line
             )
 
             st.markdown(
-                "**"
-                + format_code_label(
-                    evidence.role
-                )
-                + " · "
-                + evidence.target_id
-                + "**"
+                "**원문 근거**"
+            )
+            st.write(
+                evidence.source_text
             )
 
-            st.caption(
-                "Source · "
-                + str(
-                    reference
-                )
-            )
-
-            provenance_details = []
-
-            if evidence.source_sha256:
-                provenance_details.append(
-                    "SHA-256 "
-                    + evidence.source_sha256
-                )
-
-            if evidence.source_pages:
-                provenance_details.append(
-                    "Page "
-                    + ", ".join(
-                        str(page)
-                        for page
-                        in evidence.source_pages
-                    )
-                )
-
-            if evidence.source_location_status:
-                provenance_details.append(
-                    format_code_label(
-                        evidence.source_location_status
-                    )
-                )
-
-            if provenance_details:
+            with st.expander(
+                "추적 세부정보 (Advanced)"
+            ):
                 st.caption(
-                    " · ".join(
-                        provenance_details
-                    )
+                    "Target ID · "
+                    + evidence.target_id
                 )
 
-            st.code(
-                evidence.source_text,
-                language=None,
-            )
+                if evidence.source_reference:
+                    st.caption(
+                        "Source Reference · "
+                        + evidence.source_reference
+                    )
+
+                if evidence.source_block_id:
+                    st.caption(
+                        "Source Block · "
+                        + evidence.source_block_id
+                    )
+
+                if evidence.source_sha256:
+                    st.caption(
+                        "SHA-256 · "
+                        + evidence.source_sha256
+                    )
+
+                if evidence.source_location_status:
+                    st.caption(
+                        "Source Location · "
+                        + format_code_label(
+                            evidence.source_location_status
+                        )
+                    )
+
+    with st.expander(
+        "고급 정보 (Advanced) · Raw Verification Data"
+    ):
+        st.json(
+            verification_result.to_dict()
+        )

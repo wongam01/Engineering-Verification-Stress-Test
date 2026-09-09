@@ -29,7 +29,7 @@ class UiPhase5ATest(unittest.TestCase):
         )
         self.assertEqual(
             [button.label for button in app.button],
-            ["Analyze Documents"],
+            ["문서 분석 시작 (Analyze Documents)"],
         )
 
     def test_02_original_text_input_path_remains_available(self):
