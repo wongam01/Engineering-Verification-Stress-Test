@@ -522,5 +522,187 @@ class PdfIngressTest(unittest.TestCase):
         )
 
 
+    def test_13_feasible_pdf_role_is_ingested(self):
+        raw = build_text_pdf(
+            [
+                (
+                    "Measured production hardness H "
+                    "ranged from 58 to 60 HRC."
+                )
+            ]
+        )
+
+        document = ingest_pdf_document(
+            role="feasible",
+            filename="Operating_Evidence.pdf",
+            content=raw,
+        )
+
+        self.assertTrue(
+            document.ready_for_semantic_analysis
+        )
+        self.assertEqual(
+            document.role,
+            "feasible",
+        )
+        self.assertEqual(
+            document.filename,
+            "Operating_Evidence.pdf",
+        )
+        self.assertIn(
+            "58 to 60 HRC",
+            build_page_aware_text(document),
+        )
+
+    def test_14_feasible_pdf_cannot_enter_rv_semantic_path(self):
+        document = ingest_pdf_document(
+            role="feasible",
+            filename="Operating_Evidence.pdf",
+            content=build_text_pdf(
+                [
+                    (
+                        "Measured hardness H ranged "
+                        "from 58 to 60 HRC."
+                    )
+                ]
+            ),
+        )
+
+        with self.assertRaises(ValueError):
+            build_semantic_document(
+                document
+            )
+
+    def test_15_same_pdf_feasible_and_requirement_warns(self):
+        raw = build_text_pdf(
+            ["Shared engineering document."]
+        )
+
+        requirement = ingest_pdf_document(
+            role="requirement",
+            filename="shared.pdf",
+            content=raw,
+        )
+
+        feasible = ingest_pdf_document(
+            role="feasible",
+            filename="shared.pdf",
+            content=raw,
+        )
+
+        validation = validate_pdf_document_set(
+            [
+                requirement,
+                feasible,
+            ]
+        )
+
+        self.assertTrue(
+            validation.valid
+        )
+        self.assertEqual(
+            validation.status,
+            "PDF_DOCUMENT_SET_READY_WITH_WARNINGS",
+        )
+        self.assertIn(
+            "PDF_REUSED_ACROSS_ROLES",
+            [
+                issue.code
+                for issue in validation.issues
+            ],
+        )
+
+
+    def test_13_feasible_pdf_role_is_ingested(self):
+        raw = build_text_pdf(
+            [
+                (
+                    "Measured production hardness H "
+                    "ranged from 58 to 60 HRC."
+                )
+            ]
+        )
+
+        document = ingest_pdf_document(
+            role="feasible",
+            filename="Operating_Evidence.pdf",
+            content=raw,
+        )
+
+        self.assertTrue(
+            document.ready_for_semantic_analysis
+        )
+        self.assertEqual(
+            document.role,
+            "feasible",
+        )
+        self.assertEqual(
+            document.filename,
+            "Operating_Evidence.pdf",
+        )
+        self.assertIn(
+            "58 to 60 HRC",
+            build_page_aware_text(document),
+        )
+
+    def test_14_feasible_pdf_cannot_enter_rv_semantic_path(self):
+        document = ingest_pdf_document(
+            role="feasible",
+            filename="Operating_Evidence.pdf",
+            content=build_text_pdf(
+                [
+                    (
+                        "Measured hardness H ranged "
+                        "from 58 to 60 HRC."
+                    )
+                ]
+            ),
+        )
+
+        with self.assertRaises(ValueError):
+            build_semantic_document(
+                document
+            )
+
+    def test_15_same_pdf_feasible_and_requirement_warns(self):
+        raw = build_text_pdf(
+            ["Shared engineering document."]
+        )
+
+        requirement = ingest_pdf_document(
+            role="requirement",
+            filename="shared.pdf",
+            content=raw,
+        )
+
+        feasible = ingest_pdf_document(
+            role="feasible",
+            filename="shared.pdf",
+            content=raw,
+        )
+
+        validation = validate_pdf_document_set(
+            [
+                requirement,
+                feasible,
+            ]
+        )
+
+        self.assertTrue(
+            validation.valid
+        )
+        self.assertEqual(
+            validation.status,
+            "PDF_DOCUMENT_SET_READY_WITH_WARNINGS",
+        )
+        self.assertIn(
+            "PDF_REUSED_ACROSS_ROLES",
+            [
+                issue.code
+                for issue in validation.issues
+            ],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

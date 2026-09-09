@@ -16,6 +16,13 @@ from src.application.semantic_ingress import (
 )
 
 
+PdfDocumentRole = Literal[
+    "requirement",
+    "verification",
+    "feasible",
+]
+
+
 PdfIssueSeverity = Literal[
     "ERROR",
     "WARNING",
@@ -38,7 +45,7 @@ class PdfPageText:
 
 @dataclass(frozen=True)
 class IngestedPdfDocument:
-    role: SemanticRole
+    role: PdfDocumentRole
     filename: str
     content_sha256: str
     raw_bytes: bytes
@@ -91,7 +98,7 @@ def _issue(
 
 def _failed_document(
     *,
-    role: SemanticRole,
+    role: PdfDocumentRole,
     filename: str,
     raw_bytes: bytes,
     content_sha256: str,
@@ -114,7 +121,7 @@ def _failed_document(
 
 def ingest_pdf_document(
     *,
-    role: SemanticRole,
+    role: PdfDocumentRole,
     filename: str,
     content: bytes,
     max_bytes: int = DEFAULT_MAX_PDF_BYTES,
@@ -134,9 +141,10 @@ def ingest_pdf_document(
     if role not in {
         "requirement",
         "verification",
+        "feasible",
     }:
         raise ValueError(
-            "PDF role must be requirement or verification."
+            "PDF role must be requirement, verification, or feasible."
         )
 
     raw_bytes = bytes(content)
@@ -432,15 +440,12 @@ def validate_pdf_document_set(
         ).add(document.role)
 
     for roles in roles_by_hash.values():
-        if {
-            "requirement",
-            "verification",
-        }.issubset(roles):
+        if len(roles) > 1:
             issues.append(
                 _issue(
                     "PDF_REUSED_ACROSS_ROLES",
-                    "The same PDF is being analyzed separately as both "
-                    "Requirement and Verification. Role provenance will "
+                    "The same PDF is being analyzed separately across "
+                    "multiple document roles. Role provenance will "
                     "remain distinct.",
                     severity="WARNING",
                 )
@@ -481,6 +486,15 @@ def build_page_aware_text(
 def build_semantic_document(
     document: IngestedPdfDocument,
 ) -> SemanticDocument:
+    if document.role not in {
+        "requirement",
+        "verification",
+    }:
+        raise ValueError(
+            "Only requirement or verification PDFs can be "
+            "converted to SemanticDocument."
+        )
+
     return SemanticDocument(
         role=document.role,
         source_name=document.filename,

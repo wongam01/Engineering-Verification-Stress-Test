@@ -52,7 +52,7 @@ class UiPhase5B0Test(unittest.TestCase):
         )
         self.assertEqual(
             len(app.get("file_uploader")),
-            2,
+            3,
         )
         self.assertEqual(
             [button.label for button in app.button],

@@ -18,6 +18,14 @@ from src.application.pdf_ingress import (
     ingest_pdf_document,
     validate_pdf_document_set,
 )
+from src.application.feasible_evidence_ingress import (
+    analyze_feasible_evidence_pdf,
+    build_feasible_evidence_prefills,
+    confirm_ambiguous_feasible_source_location,
+)
+from src.application.evidence_trace import (
+    build_source_reference,
+)
 from src.application.result_presentation import (
     build_derived_value_view,
     format_constraint,
@@ -101,6 +109,93 @@ def valid_variable_id(
     )
 
 
+def build_feasible_review_signature(
+    feasible_analysis,
+    approved_candidate_ids,
+):
+    """
+    F source-location review + Engineer Approval state.
+
+    A changed signature means an already prepared model
+    must no longer be reused.
+    """
+
+    if feasible_analysis is None:
+        return None
+
+    approved_ids = set(
+        approved_candidate_ids
+    )
+
+    parts = [
+        str(
+            feasible_analysis.source_sha256
+        )
+    ]
+
+    for candidate in sorted(
+        feasible_analysis.candidates,
+        key=lambda item: item.candidate_id,
+    ):
+        extraction = candidate.extraction
+
+        parts.append(
+            "|".join(
+                [
+                    candidate.candidate_id,
+                    candidate.source_sha256,
+                    candidate.source_location_status,
+                    str(candidate.source_page),
+                    repr(
+                        tuple(
+                            candidate.source_pages
+                        )
+                    ),
+                    str(
+                        candidate.candidate_id
+                        in approved_ids
+                    ),
+                    str(
+                        extraction.get(
+                            "variable"
+                        )
+                    ),
+                    str(
+                        extraction.get(
+                            "min"
+                        )
+                    ),
+                    str(
+                        extraction.get(
+                            "max"
+                        )
+                    ),
+                    str(
+                        extraction.get(
+                            "unit"
+                        )
+                    ),
+                    str(
+                        extraction.get(
+                            "evidence_type"
+                        )
+                    ),
+                    str(
+                        extraction.get(
+                            "needs_review"
+                        )
+                    ),
+                ]
+            )
+        )
+
+    return hashlib.sha256(
+        "\n".join(
+            parts
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 # =========================================================
 # SESSION STATE
 # =========================================================
@@ -108,11 +203,14 @@ def valid_variable_id(
 for key, default in {
     "semantic_analysis": None,
     "analysis_signature": None,
+    "feasible_analysis": None,
+    "feasible_approved_candidate_ids": [],
     "mapped_analysis": None,
     "base_case": None,
     "verification_result": None,
     "verification_review_state": None,
     "prepared_semantic_review_signature": None,
+    "prepared_feasible_review_signature": None,
     "formal_model_revision": 0,
 }.items():
     if key not in st.session_state:
@@ -143,6 +241,7 @@ input_mode = st.radio(
 documents = []
 pdf_documents = []
 source_pdfs = {}
+feasible_pdf_document = None
 document_input_ready = False
 
 left, right = st.columns(2)
@@ -168,6 +267,26 @@ if input_mode == "PDF Upload":
             key="verification_pdf_upload",
         )
 
+    st.divider()
+
+    st.subheader(
+        "운영 근거 문서 (Operating Evidence PDF)"
+    )
+
+    st.caption(
+        "관측·시험·생산·운영 데이터에서 현실 가능 범위 "
+        "(Feasible Domain) 후보를 추출합니다. "
+        "Engineer Approval 전에는 Formal Model에 적용되지 않습니다."
+    )
+
+    feasible_upload = st.file_uploader(
+        "Operating Evidence PDF 업로드",
+        type=["pdf"],
+        key="feasible_pdf_upload",
+    )
+
+    feasible_status = st.container()
+
     uploads = [
         (
             "requirement",
@@ -176,6 +295,10 @@ if input_mode == "PDF Upload":
         (
             "verification",
             verification_upload,
+        ),
+        (
+            "feasible",
+            feasible_upload,
         ),
     ]
 
@@ -190,7 +313,12 @@ if input_mode == "PDF Upload":
         )
         pdf_documents.append(pdf_document)
 
-        container = left if role == "requirement" else right
+        if role == "requirement":
+            container = left
+        elif role == "verification":
+            container = right
+        else:
+            container = feasible_status
 
         with container:
             if pdf_document.ready_for_semantic_analysis:
@@ -246,8 +374,20 @@ if input_mode == "PDF Upload":
                 f"{issue.code} · {issue.message}"
             )
 
+    pdf_roles = {
+        document.role
+        for document in pdf_documents
+    }
+
+    required_pdf_roles = {
+        "requirement",
+        "verification",
+    }
+
     document_input_ready = (
-        len(pdf_documents) == 2
+        required_pdf_roles.issubset(
+            pdf_roles
+        )
         and document_set_validation.valid
         and all(
             document.ready_for_semantic_analysis
@@ -259,7 +399,21 @@ if input_mode == "PDF Upload":
         documents = [
             build_semantic_document(document)
             for document in pdf_documents
+            if document.role in {
+                "requirement",
+                "verification",
+            }
         ]
+
+        feasible_pdf_document = next(
+            (
+                document
+                for document in pdf_documents
+                if document.role == "feasible"
+            ),
+            None,
+        )
+
         source_pdfs = {
             (
                 document.role,
@@ -267,9 +421,14 @@ if input_mode == "PDF Upload":
             ): document
             for document in pdf_documents
         }
-    elif len(pdf_documents) < 2:
+
+    elif not required_pdf_roles.issubset(
+        pdf_roles
+    ):
         st.info(
-            "Requirement PDF와 Verification PDF를 모두 업로드해 주세요."
+            "Requirement PDF와 Verification PDF를 "
+            "모두 업로드해 주세요. "
+            "Operating Evidence PDF는 선택사항입니다."
         )
 
 else:
@@ -320,11 +479,32 @@ else:
     document_input_ready = bool(documents)
 
 
-current_signature = (
+semantic_documents_signature = (
     build_semantic_documents_signature(
         documents
     )
     if documents
+    else None
+)
+
+feasible_document_sha256 = (
+    feasible_pdf_document.content_sha256
+    if feasible_pdf_document is not None
+    else None
+)
+
+current_signature = (
+    hashlib.sha256(
+        (
+            (semantic_documents_signature or "")
+            + "|"
+            + (feasible_document_sha256 or "")
+        ).encode("utf-8")
+    ).hexdigest()
+    if (
+        semantic_documents_signature
+        or feasible_document_sha256
+    )
     else None
 )
 
@@ -349,6 +529,15 @@ if st.button(
                     )
                 )
 
+                feasible_analysis = (
+                    analyze_feasible_evidence_pdf(
+                        feasible_pdf_document
+                    )
+                    if feasible_pdf_document
+                    is not None
+                    else None
+                )
+
             for state_key in list(
                 st.session_state.keys()
             ):
@@ -356,6 +545,9 @@ if st.button(
                     "semantic_approval_",
                     "source_location_page_",
                     "source_location_confirm_",
+                    "feasible_approval_",
+                    "feasible_source_location_page_",
+                    "feasible_source_location_confirm_",
                 )):
                     del st.session_state[
                         state_key
@@ -378,8 +570,20 @@ if st.button(
             ] = None
 
             st.session_state[
+                "prepared_feasible_review_signature"
+            ] = None
+
+            st.session_state[
                 "semantic_analysis"
             ] = analysis
+
+            st.session_state[
+                "feasible_analysis"
+            ] = feasible_analysis
+
+            st.session_state[
+                "feasible_approved_candidate_ids"
+            ] = []
 
             st.session_state[
                 "analysis_signature"
@@ -401,6 +605,10 @@ if st.button(
 
 analysis = st.session_state[
     "semantic_analysis"
+]
+
+feasible_analysis = st.session_state[
+    "feasible_analysis"
 ]
 
 
@@ -427,6 +635,369 @@ if analysis is not None:
             "입력 문서가 분석 이후 변경되었습니다. "
             "Candidate를 사용하기 전에 Analyze Documents를 다시 실행해 주세요."
         )
+
+    # -----------------------------------------------------
+    # Feasible Evidence Candidate Review
+    # -----------------------------------------------------
+
+    feasible_approved_candidate_ids = []
+
+    if feasible_analysis is not None:
+        st.subheader(
+            "운영 근거 추출 결과 "
+            "(Feasible Evidence Candidates)"
+        )
+
+        st.caption(
+            "AI는 후보만 제안합니다. PDF 원문 위치와 의미를 "
+            "확인한 뒤 Engineer Approval이 있어야 다음 단계에서 "
+            "Feasible Domain 입력 후보로 사용할 수 있습니다."
+        )
+
+        feasible_analysis = deepcopy(
+            feasible_analysis
+        )
+
+        if not feasible_analysis.candidates:
+            st.info(
+                "이 Operating Evidence PDF에서 지원 가능한 "
+                "Feasible Domain 후보를 찾지 못했습니다."
+            )
+
+        for feasible_index, feasible_candidate in enumerate(
+            feasible_analysis.candidates,
+            start=1,
+        ):
+            extraction = (
+                feasible_candidate.extraction
+            )
+
+            with st.container(
+                border=True
+            ):
+                source_column, data_column = (
+                    st.columns(2)
+                )
+
+                feasible_preview_page = (
+                    feasible_candidate.source_page
+                )
+
+                with source_column:
+                    st.markdown(
+                        "#### 원문 근거 (Source Evidence)"
+                    )
+
+                    st.caption(
+                        feasible_candidate.source_name
+                        + " · Block "
+                        + str(
+                            feasible_candidate.source_block_id
+                            or "—"
+                        )
+                    )
+
+                    if (
+                        feasible_candidate.source_location_status
+                        == "SOURCE_LOCATION_AMBIGUOUS"
+                    ):
+                        st.warning(
+                            "Source Location Review Required"
+                        )
+
+                        selected_page = st.selectbox(
+                            "Operating Evidence 원문 페이지 선택",
+                            feasible_candidate
+                            .source_location_candidates,
+                            format_func=(
+                                lambda page:
+                                f"Page {page}"
+                            ),
+                            key=(
+                                "feasible_source_location_page_"
+                                + safe_key(
+                                    feasible_candidate
+                                    .candidate_id
+                                )
+                            ),
+                        )
+
+                        location_confirmed = (
+                            st.checkbox(
+                                "이 원문 페이지를 확인합니다.",
+                                key=(
+                                    "feasible_source_location_confirm_"
+                                    + safe_key(
+                                        feasible_candidate
+                                        .candidate_id
+                                    )
+                                ),
+                            )
+                        )
+
+                        feasible_preview_page = (
+                            selected_page
+                        )
+
+                        if location_confirmed:
+                            try:
+                                feasible_candidate = (
+                                    confirm_ambiguous_feasible_source_location(
+                                        feasible_candidate,
+                                        selected_page=(
+                                            selected_page
+                                        ),
+                                        confirmed=True,
+                                    )
+                                )
+
+                                feasible_analysis.candidates[
+                                    feasible_index - 1
+                                ] = feasible_candidate
+
+                                st.success(
+                                    "Operating Evidence source "
+                                    "page confirmed."
+                                )
+
+                            except ValueError as exc:
+                                st.error(
+                                    str(exc)
+                                )
+
+                    elif (
+                        feasible_candidate
+                        .source_location_status
+                        in {
+                            "SOURCE_LOCATION_UNRESOLVED",
+                            "SOURCE_LOCATION_MISMATCH",
+                        }
+                    ):
+                        st.error(
+                            "Source location blocked · "
+                            + format_code_label(
+                                feasible_candidate
+                                .source_location_status
+                            )
+                        )
+
+                    elif feasible_candidate.source_pages:
+                        st.success(
+                            "Source location · "
+                            + ", ".join(
+                                f"Page {page}"
+                                for page
+                                in feasible_candidate
+                                .source_pages
+                            )
+                        )
+
+                    feasible_pdf = (
+                        source_pdfs.get(
+                            (
+                                "feasible",
+                                feasible_candidate
+                                .source_sha256,
+                            )
+                        )
+                    )
+
+                    if (
+                        feasible_pdf is not None
+                        and feasible_preview_page
+                        is not None
+                    ):
+                        with st.expander(
+                            "원본 Operating Evidence "
+                            "PDF 페이지 보기"
+                        ):
+                            try:
+                                st.pdf(
+                                    build_pdf_page_preview(
+                                        feasible_pdf,
+                                        feasible_preview_page,
+                                    ),
+                                    height=360,
+                                    key=(
+                                        "feasible_pdf_preview_"
+                                        + safe_key(
+                                            feasible_candidate
+                                            .candidate_id
+                                            + ":"
+                                            + str(
+                                                feasible_preview_page
+                                            )
+                                        )
+                                    ),
+                                )
+                            except Exception as exc:
+                                st.error(
+                                    "PDF page preview failed: "
+                                    + str(exc)
+                                )
+
+                    with st.expander(
+                        "원문 추적 정보 (Advanced)"
+                    ):
+                        st.caption(
+                            "SHA-256 · "
+                            + feasible_candidate
+                            .source_sha256
+                        )
+                        st.caption(
+                            "Candidate ID · "
+                            + feasible_candidate
+                            .candidate_id
+                        )
+                        st.write(
+                            feasible_candidate
+                            .source_text
+                        )
+
+                with data_column:
+                    st.markdown(
+                        "#### 추출된 현실 가능 범위"
+                    )
+
+                    st.metric(
+                        "Engineering Variable",
+                        str(
+                            extraction.get(
+                                "variable"
+                            )
+                            or "—"
+                        ),
+                    )
+
+                    range_left, range_right = (
+                        st.columns(2)
+                    )
+
+                    range_left.metric(
+                        "Feasible Min",
+                        str(
+                            extraction.get(
+                                "min"
+                            )
+                            or "—"
+                        ),
+                    )
+
+                    range_right.metric(
+                        "Feasible Max",
+                        str(
+                            extraction.get(
+                                "max"
+                            )
+                            or "—"
+                        ),
+                    )
+
+                    st.caption(
+                        "Unit · "
+                        + str(
+                            extraction.get(
+                                "unit"
+                            )
+                            or "—"
+                        )
+                    )
+
+                    st.caption(
+                        "Evidence Type · "
+                        + str(
+                            extraction.get(
+                                "evidence_type"
+                            )
+                            or "—"
+                        )
+                    )
+
+                    needs_review = bool(
+                        extraction.get(
+                            "needs_review",
+                            True,
+                        )
+                    )
+
+                    if needs_review:
+                        st.warning(
+                            "AI extraction marked this "
+                            "candidate as review-required."
+                        )
+
+                        review_reason = (
+                            extraction.get(
+                                "review_reason"
+                            )
+                        )
+
+                        if review_reason:
+                            st.caption(
+                                str(
+                                    review_reason
+                                )
+                            )
+
+                    eligible_for_approval = (
+                        analysis_is_current
+                        and feasible_candidate
+                        .source_location_ready
+                        and not needs_review
+                    )
+
+                    approved = st.checkbox(
+                        "이 Operating Evidence를 "
+                        "Feasible Domain 후보로 승인합니다.",
+                        key=(
+                            "feasible_approval_"
+                            + safe_key(
+                                feasible_candidate
+                                .candidate_id
+                            )
+                        ),
+                        disabled=(
+                            not eligible_for_approval
+                        ),
+                    )
+
+                    if approved:
+                        feasible_approved_candidate_ids.append(
+                            feasible_candidate
+                            .candidate_id
+                        )
+
+        st.session_state[
+            "feasible_analysis"
+        ] = feasible_analysis
+
+        st.session_state[
+            "feasible_approved_candidate_ids"
+        ] = feasible_approved_candidate_ids
+
+        if feasible_approved_candidate_ids:
+            st.success(
+                "승인된 Operating Evidence 후보 · "
+                + str(
+                    len(
+                        feasible_approved_candidate_ids
+                    )
+                )
+            )
+
+        st.caption(
+            "이번 단계에서는 승인된 F 후보를 "
+            "EngineeringCase나 Solver에 아직 적용하지 않습니다."
+        )
+
+        st.divider()
+
+    current_feasible_review_signature = (
+        build_feasible_review_signature(
+            feasible_analysis,
+            feasible_approved_candidate_ids,
+        )
+    )
 
     approved_candidate_ids = []
     analysis = deepcopy(analysis)
@@ -829,6 +1400,192 @@ if analysis is not None:
                 target
             )
 
+        approved_feasible_ids = set(
+            st.session_state[
+                "feasible_approved_candidate_ids"
+            ]
+        )
+
+        feasible_binding_by_group = {}
+        feasible_binding_errors = []
+
+        if (
+            feasible_analysis is not None
+            and approved_feasible_ids
+        ):
+            for feasible_candidate in (
+                feasible_analysis.candidates
+            ):
+                if (
+                    feasible_candidate.candidate_id
+                    not in approved_feasible_ids
+                ):
+                    continue
+
+                extraction = (
+                    feasible_candidate.extraction
+                )
+
+                source_variable_f = str(
+                    extraction.get(
+                        "variable"
+                    )
+                    or ""
+                ).strip()
+
+                if not source_variable_f:
+                    feasible_binding_errors.append(
+                        feasible_candidate.candidate_id
+                        + ": variable is missing."
+                    )
+                    continue
+
+                if not (
+                    feasible_candidate
+                    .source_location_ready
+                ):
+                    feasible_binding_errors.append(
+                        feasible_candidate.candidate_id
+                        + ": source location is not ready."
+                    )
+                    continue
+
+                if bool(
+                    extraction.get(
+                        "needs_review",
+                        True,
+                    )
+                ):
+                    feasible_binding_errors.append(
+                        feasible_candidate.candidate_id
+                        + ": candidate still requires review."
+                    )
+                    continue
+
+                feasible_group_key = (
+                    normalize_source_variable_group_key(
+                        source_variable_f
+                    )
+                )
+
+                if (
+                    feasible_group_key
+                    not in source_info
+                ):
+                    feasible_binding_errors.append(
+                        source_variable_f
+                        + ": approved Operating Evidence "
+                        "does not match an R/V variable."
+                    )
+                    continue
+
+                source_reference_f = (
+                    build_source_reference(
+                        source_name=(
+                            feasible_candidate.source_name
+                        ),
+                        source_block_id=(
+                            feasible_candidate.source_block_id
+                        ),
+                        source_pages=(
+                            feasible_candidate.source_pages
+                        ),
+                    )
+                )
+
+                binding = {
+                    "candidate_id":
+                        feasible_candidate.candidate_id,
+                    "unit": str(
+                        extraction.get("unit")
+                        or ""
+                    ).strip(),
+                    "min": str(
+                        extraction.get("min")
+                        or ""
+                    ).strip(),
+                    "max": str(
+                        extraction.get("max")
+                        or ""
+                    ).strip(),
+                    "evidence_type": str(
+                        extraction.get(
+                            "evidence_type"
+                        )
+                        or ""
+                    ).strip(),
+                    "reference": str(
+                        source_reference_f
+                        or ""
+                    ).strip(),
+                }
+
+                rv_units = (
+                    source_info[
+                        feasible_group_key
+                    ]["units"]
+                )
+
+                if (
+                    rv_units
+                    and binding["unit"]
+                    not in rv_units
+                ):
+                    feasible_binding_errors.append(
+                        source_variable_f
+                        + ": Operating Evidence unit "
+                        + binding["unit"]
+                        + " conflicts with R/V unit(s): "
+                        + ", ".join(
+                            sorted(
+                                rv_units
+                            )
+                        )
+                    )
+                    continue
+
+                if not all(
+                    binding[
+                        field
+                    ]
+                    for field in (
+                        "unit",
+                        "min",
+                        "max",
+                        "evidence_type",
+                        "reference",
+                    )
+                ):
+                    feasible_binding_errors.append(
+                        feasible_candidate.candidate_id
+                        + ": required source-bound data is missing."
+                    )
+                    continue
+
+                if (
+                    feasible_group_key
+                    in feasible_binding_by_group
+                ):
+                    feasible_binding_errors.append(
+                        source_variable_f
+                        + ": multiple approved F candidates "
+                        "map to the same variable."
+                    )
+                    feasible_binding_by_group[
+                        feasible_group_key
+                    ] = None
+                    continue
+
+                feasible_binding_by_group[
+                    feasible_group_key
+                ] = binding
+
+        for issue in feasible_binding_errors:
+            st.error(
+                "Feasible Evidence binding blocked · "
+                + issue
+            )
+
         variable_forms = {}
 
         for group_key, info in (
@@ -866,6 +1623,58 @@ if analysis is not None:
                 else ""
             )
 
+            source_bound = (
+                feasible_binding_by_group.get(
+                    group_key
+                )
+            )
+
+            binding_marker_key = (
+                "feasible_bound_candidate_"
+                + key
+            )
+
+            source_bound_id = (
+                source_bound[
+                    "candidate_id"
+                ]
+                if source_bound is not None
+                else None
+            )
+
+            previous_bound_id = (
+                st.session_state.get(
+                    binding_marker_key
+                )
+            )
+
+            if (
+                source_bound_id
+                != previous_bound_id
+            ):
+                for widget_key in (
+                    "unit_" + key,
+                    "fmin_" + key,
+                    "fmax_" + key,
+                    "evidence_type_" + key,
+                    "evidence_ref_" + key,
+                    "evidence_confirmed_" + key,
+                ):
+                    st.session_state.pop(
+                        widget_key,
+                        None,
+                    )
+
+                if source_bound_id is None:
+                    st.session_state.pop(
+                        binding_marker_key,
+                        None,
+                    )
+                else:
+                    st.session_state[
+                        binding_marker_key
+                    ] = source_bound_id
+
             with st.container(
                 border=True
             ):
@@ -898,97 +1707,205 @@ if analysis is not None:
                         )
                     )
 
-                col1, col2 = (
-                    st.columns(2)
-                )
-
-                with col1:
-                    canonical_id = (
-                        st.text_input(
-                            "Canonical Variable ID",
-                            value=(
-                                existing_mapping_suggestion
-                            ),
-                            placeholder="예: H",
-                            key=(
-                                "canonical_"
-                                + key
-                            ),
-                        )
-                    )
-
-                    unit = st.text_input(
-                        "공학 단위 (Engineering Unit)",
-                        value=default_unit,
+                canonical_id = (
+                    st.text_input(
+                        "Canonical Variable ID",
+                        value=(
+                            existing_mapping_suggestion
+                        ),
+                        placeholder="예: H",
                         key=(
-                            "unit_"
+                            "canonical_"
                             + key
                         ),
                     )
+                )
 
-                with col2:
+                if source_bound is not None:
+                    st.markdown(
+                        "#### 현실 가능 범위 검토 "
+                        "(Feasible Domain Review)"
+                    )
+
+                    min_col, max_col, unit_col = (
+                        st.columns(3)
+                    )
+
+                    min_col.metric(
+                        "Feasible Min",
+                        source_bound["min"],
+                    )
+
+                    max_col.metric(
+                        "Feasible Max",
+                        source_bound["max"],
+                    )
+
+                    unit_col.metric(
+                        "Engineering Unit",
+                        source_bound["unit"],
+                    )
+
+                    canonical_display = (
+                        canonical_id.strip()
+                        or source_variable
+                    )
+
+                    st.markdown(
+                        "**Formal Feasible Domain** · "
+                        f"`{source_bound['min']} ≤ "
+                        f"{canonical_display} ≤ "
+                        f"{source_bound['max']} "
+                        f"{source_bound['unit']}`"
+                    )
+
+                    status_left, status_right = (
+                        st.columns(2)
+                    )
+
+                    status_left.success(
+                        "✓ PDF Source Bound"
+                    )
+
+                    status_right.success(
+                        "✓ Engineer Approved"
+                    )
+
+                    st.markdown(
+                        "**원문 근거 (Source Evidence)**"
+                    )
+
+                    st.write(
+                        source_bound[
+                            "reference"
+                        ]
+                    )
+
+                    st.caption(
+                        "Evidence Type · "
+                        + source_bound[
+                            "evidence_type"
+                        ]
+                    )
+
+                    st.caption(
+                        "Min / Max / Unit / Evidence Reference는 "
+                        "승인된 Operating Evidence 원문에 "
+                        "직접 연결되어 있습니다."
+                    )
+
+                    unit = (
+                        source_bound["unit"]
+                    )
+
                     feasible_min = (
-                        st.text_input(
-                            "현실 가능 최솟값 (Feasible Min)",
-                            placeholder="예: 58",
-                            key=(
-                                "fmin_"
-                                + key
-                            ),
-                        )
+                        source_bound["min"]
                     )
 
                     feasible_max = (
-                        st.text_input(
-                            "현실 가능 최댓값 (Feasible Max)",
-                            placeholder="예: 60",
+                        source_bound["max"]
+                    )
+
+                    evidence_type = (
+                        source_bound[
+                            "evidence_type"
+                        ]
+                    )
+
+                    evidence_reference = (
+                        source_bound[
+                            "reference"
+                        ]
+                    )
+
+                    evidence_confirmed = True
+
+                else:
+                    st.info(
+                        "승인된 PDF Source-Bound "
+                        "Operating Evidence가 없습니다."
+                    )
+
+                    with st.expander(
+                        "Advanced · Engineer-Supplied "
+                        "Feasible Domain"
+                    ):
+                        unit = st.text_input(
+                            "공학 단위 (Engineering Unit)",
+                            value=default_unit,
                             key=(
-                                "fmax_"
+                                "unit_"
                                 + key
                             ),
                         )
-                    )
 
-                evidence_type = (
-                    st.selectbox(
-                        "현실 가능 근거 유형 (Evidence Type)",
-                        [
-                            "observed_test_data",
-                            "manufacturing_record",
-                            "engineering_analysis",
-                            "other",
-                        ],
-                        key=(
-                            "evidence_type_"
-                            + key
-                        ),
-                    )
-                )
+                        feasible_min = (
+                            st.text_input(
+                                "현실 가능 최솟값 "
+                                "(Feasible Min)",
+                                placeholder="예: 58",
+                                key=(
+                                    "fmin_"
+                                    + key
+                                ),
+                            )
+                        )
 
-                evidence_reference = (
-                    st.text_input(
-                        "근거 참조 (Evidence Reference)",
-                        placeholder=(
-                            "예: hardness_test_report:"
-                            "sample_set_A"
-                        ),
-                        key=(
-                            "evidence_ref_"
-                            + key
-                        ),
-                    )
-                )
+                        feasible_max = (
+                            st.text_input(
+                                "현실 가능 최댓값 "
+                                "(Feasible Max)",
+                                placeholder="예: 60",
+                                key=(
+                                    "fmax_"
+                                    + key
+                                ),
+                            )
+                        )
 
-                evidence_confirmed = (
-                    st.checkbox(
-                        "이 현실 가능 범위가 공학적 근거에 기반함을 "
-                        "확인합니다.",
-                        key=(
-                            "evidence_confirmed_"
-                            + key
-                        ),
-                    )
-                )
+                        evidence_type = (
+                            st.selectbox(
+                                "현실 가능 근거 유형 "
+                                "(Evidence Type)",
+                                [
+                                    "observed_test_data",
+                                    "manufacturing_record",
+                                    "engineering_analysis",
+                                    "other",
+                                ],
+                                key=(
+                                    "evidence_type_"
+                                    + key
+                                ),
+                            )
+                        )
+
+                        evidence_reference = (
+                            st.text_input(
+                                "근거 참조 "
+                                "(Evidence Reference)",
+                                placeholder=(
+                                    "예: hardness_test_report:"
+                                    "sample_set_A"
+                                ),
+                                key=(
+                                    "evidence_ref_"
+                                    + key
+                                ),
+                            )
+                        )
+
+                        evidence_confirmed = (
+                            st.checkbox(
+                                "이 현실 가능 범위가 "
+                                "공학적 근거에 기반함을 "
+                                "확인합니다.",
+                                key=(
+                                    "evidence_confirmed_"
+                                    + key
+                                ),
+                            )
+                        )
 
                 variable_forms[
                     group_key
@@ -1017,6 +1934,18 @@ if analysis is not None:
                     "evidence_confirmed": (
                         evidence_confirmed
                     ),
+                    "source_bound": (
+                        source_bound
+                        is not None
+                    ),
+                    "source_bound_candidate_id": (
+                        source_bound[
+                            "candidate_id"
+                        ]
+                        if source_bound
+                        is not None
+                        else None
+                    ),
                 }
 
         if st.button(
@@ -1024,7 +1953,139 @@ if analysis is not None:
             type="primary",
         ):
             try:
-                errors = []
+                errors = list(
+                    feasible_binding_errors
+                )
+
+                approved_feasible_ids = set(
+                    st.session_state[
+                        "feasible_approved_candidate_ids"
+                    ]
+                )
+
+                if (
+                    feasible_analysis is not None
+                    and approved_feasible_ids
+                ):
+                    selected_feasible_analysis = (
+                        deepcopy(
+                            feasible_analysis
+                        )
+                    )
+
+                    selected_feasible_analysis.candidates = [
+                        candidate
+                        for candidate
+                        in selected_feasible_analysis.candidates
+                        if candidate.candidate_id
+                        in approved_feasible_ids
+                    ]
+
+                    canonical_variable_by_candidate = {}
+
+                    for candidate in (
+                        selected_feasible_analysis
+                        .candidates
+                    ):
+                        source_variable_f = str(
+                            candidate.extraction.get(
+                                "variable"
+                            )
+                            or ""
+                        ).strip()
+
+                        group_key_f = (
+                            normalize_source_variable_group_key(
+                                source_variable_f
+                            )
+                        )
+
+                        form_f = variable_forms.get(
+                            group_key_f
+                        )
+
+                        if form_f is not None:
+                            canonical_variable_by_candidate[
+                                candidate.candidate_id
+                            ] = form_f[
+                                "canonical_id"
+                            ]
+
+                    feasible_prefill_result = (
+                        build_feasible_evidence_prefills(
+                            selected_feasible_analysis,
+                            approved_candidate_ids=sorted(
+                                approved_feasible_ids
+                            ),
+                            canonical_variable_by_candidate=(
+                                canonical_variable_by_candidate
+                            ),
+                        )
+                    )
+
+                    if not feasible_prefill_result.ready:
+                        errors.extend(
+                            feasible_prefill_result.issues
+                        )
+
+                    else:
+                        for prefill in (
+                            feasible_prefill_result.prefills
+                        ):
+                            group_key_f = (
+                                normalize_source_variable_group_key(
+                                    prefill.source_variable
+                                )
+                            )
+
+                            form_f = variable_forms.get(
+                                group_key_f
+                            )
+
+                            if form_f is None:
+                                errors.append(
+                                    prefill.source_variable
+                                    + ": source-bound F has "
+                                    "no matching variable form."
+                                )
+                                continue
+
+                            # Application-level source-bound
+                            # contract is authoritative.
+                            form_f["unit"] = (
+                                prefill.unit
+                            )
+                            form_f[
+                                "feasible_min"
+                            ] = (
+                                prefill.feasible_min
+                            )
+                            form_f[
+                                "feasible_max"
+                            ] = (
+                                prefill.feasible_max
+                            )
+                            form_f[
+                                "evidence_type"
+                            ] = (
+                                prefill.evidence_type
+                            )
+                            form_f[
+                                "evidence_reference"
+                            ] = (
+                                prefill.evidence_reference
+                            )
+                            form_f[
+                                "evidence_confirmed"
+                            ] = True
+                            form_f[
+                                "source_bound"
+                            ] = True
+                            form_f[
+                                "source_bound_candidate_id"
+                            ] = (
+                                prefill.candidate_id
+                            )
 
                 for (
                     group_key,
@@ -1168,8 +2229,20 @@ if analysis is not None:
                                 "approved"
                             ),
                             "note": (
-                                "Engineer-confirmed "
-                                "through Application UI."
+                                (
+                                    "Engineer-approved, PDF "
+                                    "source-bound Operating "
+                                    "Evidence through "
+                                    "Application UI."
+                                )
+                                if form.get(
+                                    "source_bound",
+                                    False,
+                                )
+                                else (
+                                    "Engineer-confirmed "
+                                    "through Application UI."
+                                )
                             ),
                         },
                     }
@@ -1220,6 +2293,10 @@ if analysis is not None:
                 ] = current_semantic_review_signature
 
                 st.session_state[
+                    "prepared_feasible_review_signature"
+                ] = current_feasible_review_signature
+
+                st.session_state[
                     "formal_model_revision"
                 ] += 1
 
@@ -1241,8 +2318,8 @@ if analysis is not None:
                 )
 
 
-# A prepared model must never survive a changed semantic approval,
-# source-page review, or stale document analysis.
+# A prepared model must never survive changed R/V semantics,
+# source-page review, F approval/source review, or stale input.
 if (
     analysis is not None
     and "all_semantics_approved" in locals()
@@ -1257,6 +2334,16 @@ if (
                 "prepared_semantic_review_signature"
             ]
             != current_semantic_review_signature
+        )
+        or (
+            st.session_state[
+                "prepared_feasible_review_signature"
+            ]
+            is not None
+            and st.session_state[
+                "prepared_feasible_review_signature"
+            ]
+            != current_feasible_review_signature
         )
     )
 ):
@@ -1287,12 +2374,17 @@ if (
         ] = None
 
         st.session_state[
+            "prepared_feasible_review_signature"
+        ] = None
+
+        st.session_state[
             "formal_model_revision"
         ] += 1
 
         st.info(
-            "Semantic approval or source-location review changed. "
-            "The prepared formal model has been invalidated."
+            "Semantic Review 또는 Feasible Evidence Review가 "
+            "변경되어 기존 Formal Model과 Verification Result를 "
+            "무효화했습니다."
         )
 
 
@@ -1430,8 +2522,9 @@ if (
 
     st.caption(
         "Requirement와 Verification 값은 승인된 문서 추출 "
-        "결과에서 자동으로 연결되며, 현재 Feasible Domain은 "
-        "Engineer-Supplied Operating Evidence입니다."
+        "결과에서 자동으로 연결됩니다. Feasible Domain은 "
+        "승인된 PDF Source-Bound Operating Evidence 또는 "
+        "Engineer-Supplied Evidence에서 구성됩니다."
     )
 
     if (
