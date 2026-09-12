@@ -101,6 +101,65 @@ def build_blank_pdf():
     return buffer.getvalue()
 
 
+
+def build_mixed_pdf(page_texts):
+    writer = PdfWriter()
+
+    for text in page_texts:
+        page = writer.add_blank_page(
+            width=612,
+            height=792,
+        )
+
+        if text is None:
+            continue
+
+        font = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            }
+        )
+        font_reference = writer._add_object(font)
+
+        page[NameObject("/Resources")] = DictionaryObject(
+            {
+                NameObject("/Font"): DictionaryObject(
+                    {
+                        NameObject("/F1"): font_reference,
+                    }
+                )
+            }
+        )
+
+        escaped = str(text).replace(
+            "\\",
+            "\\\\",
+        ).replace(
+            "(",
+            "\\(",
+        ).replace(
+            ")",
+            "\\)",
+        )
+
+        stream = DecodedStreamObject()
+        stream.set_data(
+            (
+                "BT /F1 12 Tf 72 720 Td ("
+                + escaped
+                + ") Tj ET"
+            ).encode("latin-1")
+        )
+
+        page[NameObject("/Contents")] = writer._add_object(stream)
+
+    buffer = BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
 def constraint_extractor(
     text,
     role,
@@ -613,94 +672,212 @@ class PdfIngressTest(unittest.TestCase):
         )
 
 
-    def test_13_feasible_pdf_role_is_ingested(self):
+
+
+
+
+
+    def test_16_embedded_text_does_not_call_vision_fallback(self):
         raw = build_text_pdf(
-            [
-                (
-                    "Measured production hardness H "
-                    "ranged from 58 to 60 HRC."
-                )
-            ]
+            ["R1. Hardness H shall be between 50 and 57 HRC."]
         )
+        calls = []
+
+        def fake_vision(pdf_bytes, page_number):
+            calls.append((pdf_bytes, page_number))
+            raise AssertionError(
+                "Vision fallback must not run for an embedded-text page."
+            )
 
         document = ingest_pdf_document(
-            role="feasible",
-            filename="Operating_Evidence.pdf",
+            role="requirement",
+            filename="text_requirement.pdf",
             content=raw,
+            vision_page_extractor=fake_vision,
         )
 
-        self.assertTrue(
-            document.ready_for_semantic_analysis
-        )
-        self.assertEqual(
-            document.role,
-            "feasible",
-        )
-        self.assertEqual(
-            document.filename,
-            "Operating_Evidence.pdf",
-        )
-        self.assertIn(
-            "58 to 60 HRC",
-            build_page_aware_text(document),
-        )
+        self.assertTrue(document.ready_for_semantic_analysis)
+        self.assertEqual(calls, [])
+        self.assertIn("50 and 57 HRC", document.pages[0].text)
 
-    def test_14_feasible_pdf_cannot_enter_rv_semantic_path(self):
+
+    def test_17_empty_text_page_can_use_vision_fallback(self):
+        raw = build_blank_pdf()
+        calls = []
+
+        def fake_vision(pdf_bytes, page_number):
+            calls.append((pdf_bytes, page_number))
+
+            self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
+            self.assertEqual(page_number, 1)
+
+            return (
+                "Observed production hardness H "
+                "ranged from 58 to 60 HRC."
+            )
+
         document = ingest_pdf_document(
             role="feasible",
-            filename="Operating_Evidence.pdf",
-            content=build_text_pdf(
-                [
-                    (
-                        "Measured hardness H ranged "
-                        "from 58 to 60 HRC."
-                    )
-                ]
+            filename="scanned_evidence.pdf",
+            content=raw,
+            vision_page_extractor=fake_vision,
+        )
+
+        self.assertTrue(document.ready_for_semantic_analysis)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1], 1)
+
+        self.assertEqual(
+            document.pages[0].text,
+            (
+                "Observed production hardness H "
+                "ranged from 58 to 60 HRC."
             ),
         )
 
-        with self.assertRaises(ValueError):
-            build_semantic_document(
-                document
-            )
+        issue_codes = {issue.code for issue in document.issues}
 
-    def test_15_same_pdf_feasible_and_requirement_warns(self):
-        raw = build_text_pdf(
-            ["Shared engineering document."]
+        self.assertIn(
+            "PDF_PAGE_VISION_USED",
+            issue_codes,
+        )
+        self.assertNotIn(
+            "PDF_PAGE_TEXT_EMPTY",
+            issue_codes,
         )
 
-        requirement = ingest_pdf_document(
+
+
+    def test_18_empty_vision_result_remains_fail_safe(self):
+        raw = build_blank_pdf()
+        calls = []
+
+        def fake_vision(pdf_bytes, page_number):
+            calls.append(page_number)
+            return ""
+
+        document = ingest_pdf_document(
             role="requirement",
-            filename="shared.pdf",
+            filename="unreadable_scan.pdf",
             content=raw,
+            vision_page_extractor=fake_vision,
         )
 
-        feasible = ingest_pdf_document(
-            role="feasible",
-            filename="shared.pdf",
-            content=raw,
+        self.assertEqual(calls, [1])
+        self.assertFalse(document.ready_for_semantic_analysis)
+        self.assertEqual(
+            document.status,
+            "IMAGE_ONLY_OR_SCANNED_PDF_UNSUPPORTED",
         )
 
-        validation = validate_pdf_document_set(
+        issue_codes = {issue.code for issue in document.issues}
+        self.assertIn("PDF_PAGE_TEXT_EMPTY", issue_codes)
+        self.assertNotIn("PDF_PAGE_VISION_USED", issue_codes)
+
+
+    def test_19_vision_exception_does_not_crash_ingress(self):
+        raw = build_blank_pdf()
+
+        def failing_vision(pdf_bytes, page_number):
+            raise RuntimeError("simulated vision failure")
+
+        document = ingest_pdf_document(
+            role="verification",
+            filename="vision_failure.pdf",
+            content=raw,
+            vision_page_extractor=failing_vision,
+        )
+
+        self.assertFalse(document.ready_for_semantic_analysis)
+        self.assertEqual(
+            document.status,
+            "IMAGE_ONLY_OR_SCANNED_PDF_UNSUPPORTED",
+        )
+
+        issue_codes = {issue.code for issue in document.issues}
+
+        self.assertIn(
+            "PDF_PAGE_VISION_FAILED",
+            issue_codes,
+        )
+        self.assertIn(
+            "PDF_PAGE_TEXT_EMPTY",
+            issue_codes,
+        )
+        self.assertNotIn(
+            "PDF_PAGE_VISION_USED",
+            issue_codes,
+        )
+
+
+
+    def test_20_mixed_pdf_uses_vision_only_for_empty_text_pages(self):
+        raw = build_mixed_pdf(
             [
-                requirement,
-                feasible,
+                "Embedded text on engineering page one.",
+                None,
+                "Embedded text on engineering page three.",
             ]
         )
 
-        self.assertTrue(
-            validation.valid
+        calls = []
+
+        def fake_vision(pdf_bytes, page_number):
+            calls.append(page_number)
+
+            self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
+
+            return (
+                "Vision extracted engineering content "
+                "from scanned page two."
+            )
+
+        document = ingest_pdf_document(
+            role="requirement",
+            filename="mixed_engineering_document.pdf",
+            content=raw,
+            vision_page_extractor=fake_vision,
+        )
+
+        self.assertTrue(document.ready_for_semantic_analysis)
+        self.assertEqual(document.total_pages, 3)
+
+        # Vision must run only for the page without embedded text.
+        self.assertEqual(calls, [2])
+
+        self.assertEqual(
+            [page.page_number for page in document.pages],
+            [1, 2, 3],
+        )
+
+        self.assertIn(
+            "Embedded text on engineering page one.",
+            document.pages[0].text,
         )
         self.assertEqual(
-            validation.status,
-            "PDF_DOCUMENT_SET_READY_WITH_WARNINGS",
+            document.pages[1].text,
+            (
+                "Vision extracted engineering content "
+                "from scanned page two."
+            ),
         )
         self.assertIn(
-            "PDF_REUSED_ACROSS_ROLES",
-            [
-                issue.code
-                for issue in validation.issues
-            ],
+            "Embedded text on engineering page three.",
+            document.pages[2].text,
+        )
+
+        issue_codes = [
+            issue.code
+            for issue in document.issues
+        ]
+
+        self.assertEqual(
+            issue_codes.count("PDF_PAGE_VISION_USED"),
+            1,
+        )
+        self.assertNotIn(
+            "PDF_PAGE_TEXT_EMPTY",
+            issue_codes,
         )
 
 

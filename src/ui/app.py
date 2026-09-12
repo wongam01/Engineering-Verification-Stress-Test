@@ -16,7 +16,13 @@ from src.application.pdf_ingress import (
     build_pdf_page_preview,
     build_semantic_document,
     ingest_pdf_document,
+    pdf_document_can_attempt_vision,
+    pdf_document_requires_vision,
+    prepare_pdf_document_for_semantic_analysis,
     validate_pdf_document_set,
+)
+from src.ai.pdf_page_vision import (
+    extract_pdf_page_with_vision,
 )
 from src.application.feasible_evidence_ingress import (
     analyze_feasible_evidence_pdf,
@@ -211,6 +217,8 @@ for key, default in {
     "verification_review_state": None,
     "prepared_semantic_review_signature": None,
     "prepared_feasible_review_signature": None,
+    "vision_prepared_pdf_documents": {},
+    "vision_prepared_pdf_signature": None,
     "formal_model_revision": 0,
 }.items():
     if key not in st.session_state:
@@ -243,6 +251,7 @@ pdf_documents = []
 source_pdfs = {}
 feasible_pdf_document = None
 document_input_ready = False
+pdf_input_signature = None
 
 left, right = st.columns(2)
 
@@ -311,6 +320,22 @@ if input_mode == "PDF Upload":
             filename=upload.name,
             content=upload.getvalue(),
         )
+
+        cache_key = (
+            role
+            + ":"
+            + pdf_document.content_sha256
+        )
+
+        cached_pdf_document = (
+            st.session_state[
+                "vision_prepared_pdf_documents"
+            ].get(cache_key)
+        )
+
+        if cached_pdf_document is not None:
+            pdf_document = cached_pdf_document
+
         pdf_documents.append(pdf_document)
 
         if role == "requirement":
@@ -341,9 +366,25 @@ if input_mode == "PDF Upload":
                         + str(pdf_document.total_pages)
                     )
             else:
-                st.error(
-                    f"PDF ingestion blocked · {pdf_document.status}"
-                )
+                if (
+                    pdf_document_requires_vision(
+                        pdf_document
+                    )
+                    and pdf_document_can_attempt_vision(
+                        pdf_document
+                    )
+                ):
+                    st.info(
+                        f"{pdf_document.filename} · "
+                        "Scanned/image-only page(s) detected. "
+                        "Vision analysis will run when "
+                        "Analyze Documents is selected."
+                    )
+                else:
+                    st.error(
+                        "PDF ingestion blocked · "
+                        + pdf_document.status
+                    )
 
             for issue in pdf_document.issues:
                 if issue.severity == "ERROR":
@@ -354,6 +395,18 @@ if input_mode == "PDF Upload":
                     st.warning(
                         f"{issue.code} · {issue.message}"
                     )
+
+    if pdf_documents:
+        pdf_input_signature = hashlib.sha256(
+            "\n".join(
+                (
+                    document.role
+                    + ":"
+                    + document.content_sha256
+                )
+                for document in pdf_documents
+            ).encode("utf-8")
+        ).hexdigest()
 
     document_set_validation = (
         validate_pdf_document_set(
@@ -384,18 +437,47 @@ if input_mode == "PDF Upload":
         "verification",
     }
 
+    blocking_document_set_issue = any(
+        issue.severity == "ERROR"
+        and issue.code != "PDF_DOCUMENT_NOT_READY"
+        for issue in document_set_validation.issues
+    )
+
+    documents_supported_for_analysis = all(
+        (
+            document.ready_for_semantic_analysis
+            or (
+                pdf_document_requires_vision(
+                    document
+                )
+                and pdf_document_can_attempt_vision(
+                    document
+                )
+            )
+        )
+        for document in pdf_documents
+    )
+
     document_input_ready = (
         required_pdf_roles.issubset(
             pdf_roles
         )
-        and document_set_validation.valid
+        and not blocking_document_set_issue
+        and documents_supported_for_analysis
+    )
+
+    pdf_documents_fully_prepared = (
+        document_input_ready
         and all(
             document.ready_for_semantic_analysis
+            and not pdf_document_requires_vision(
+                document
+            )
             for document in pdf_documents
         )
     )
 
-    if document_input_ready:
+    if pdf_documents_fully_prepared:
         documents = [
             build_semantic_document(document)
             for document in pdf_documents
@@ -429,6 +511,13 @@ if input_mode == "PDF Upload":
             "Requirement PDF와 Verification PDF를 "
             "모두 업로드해 주세요. "
             "Operating Evidence PDF는 선택사항입니다."
+        )
+
+    elif document_input_ready:
+        st.info(
+            "Scanned/image-only PDF page(s) are ready "
+            "for Vision analysis. "
+            "Select Analyze Documents to continue."
         )
 
 else:
@@ -520,6 +609,155 @@ if st.button(
 
     else:
         try:
+            if input_mode == "PDF Upload":
+                def vision_page_extractor(
+                    pdf_bytes,
+                    page_number,
+                ):
+                    from src.ai.constraint_parser import (
+                        client as vision_client,
+                    )
+
+                    return extract_pdf_page_with_vision(
+                        pdf_bytes,
+                        page_number=page_number,
+                        client=vision_client,
+                    )
+
+                if any(
+                    pdf_document_requires_vision(
+                        document
+                    )
+                    for document in pdf_documents
+                ):
+                    with st.spinner(
+                        "스캔 페이지를 Vision AI로 "
+                        "분석하고 있습니다..."
+                    ):
+                        prepared_pdf_documents = [
+                            (
+                                prepare_pdf_document_for_semantic_analysis(
+                                    document,
+                                    vision_page_extractor=(
+                                        vision_page_extractor
+                                    ),
+                                )
+                                if pdf_document_requires_vision(
+                                    document
+                                )
+                                else document
+                            )
+                            for document in pdf_documents
+                        ]
+
+                    if not all(
+                        document.ready_for_semantic_analysis
+                        for document
+                        in prepared_pdf_documents
+                    ):
+                        raise RuntimeError(
+                            "Vision recovery did not produce "
+                            "usable text for every required PDF."
+                        )
+
+                    pdf_documents = (
+                        prepared_pdf_documents
+                    )
+
+                    cached_documents = dict(
+                        st.session_state[
+                            "vision_prepared_pdf_documents"
+                        ]
+                    )
+
+                    for document in pdf_documents:
+                        cache_key = (
+                            document.role
+                            + ":"
+                            + document.content_sha256
+                        )
+                        cached_documents[
+                            cache_key
+                        ] = document
+
+                    st.session_state[
+                        "vision_prepared_pdf_documents"
+                    ] = cached_documents
+
+                    st.session_state[
+                        "vision_prepared_pdf_signature"
+                    ] = pdf_input_signature
+
+                prepared_validation = (
+                    validate_pdf_document_set(
+                        pdf_documents
+                    )
+                )
+
+                if not prepared_validation.valid:
+                    raise RuntimeError(
+                        "Prepared PDF document set "
+                        "failed validation."
+                    )
+
+                documents = [
+                    build_semantic_document(
+                        document
+                    )
+                    for document in pdf_documents
+                    if document.role in {
+                        "requirement",
+                        "verification",
+                    }
+                ]
+
+                feasible_pdf_document = next(
+                    (
+                        document
+                        for document
+                        in pdf_documents
+                        if document.role
+                        == "feasible"
+                    ),
+                    None,
+                )
+
+                source_pdfs = {
+                    (
+                        document.role,
+                        document.content_sha256,
+                    ): document
+                    for document
+                    in pdf_documents
+                }
+
+                semantic_documents_signature = (
+                    build_semantic_documents_signature(
+                        documents
+                    )
+                )
+
+                feasible_document_sha256 = (
+                    feasible_pdf_document
+                    .content_sha256
+                    if feasible_pdf_document
+                    is not None
+                    else None
+                )
+
+                current_signature = (
+                    hashlib.sha256(
+                        (
+                            semantic_documents_signature
+                            + "|"
+                            + (
+                                feasible_document_sha256
+                                or ""
+                            )
+                        ).encode("utf-8")
+                    ).hexdigest()
+                )
+
             with st.spinner(
                 "문서에서 공학 의미 (Engineering Semantics)를 추출하고 있습니다..."
             ):

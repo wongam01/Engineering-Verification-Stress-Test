@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Callable, Literal, Sequence
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.errors import PdfReadError
@@ -27,6 +27,9 @@ PdfIssueSeverity = Literal[
     "ERROR",
     "WARNING",
 ]
+
+
+VisionPageExtractor = Callable[[bytes, int], str]
 
 
 @dataclass(frozen=True)
@@ -129,6 +132,7 @@ def ingest_pdf_document(
     max_extracted_characters: int = (
         DEFAULT_MAX_EXTRACTED_CHARACTERS
     ),
+    vision_page_extractor: VisionPageExtractor | None = None,
 ) -> IngestedPdfDocument:
     """
     Read a text-based PDF without sending the PDF bytes to AI.
@@ -332,6 +336,54 @@ def ingest_pdf_document(
         )
 
         page_text = normalized_line_endings.strip()
+
+        if not page_text and vision_page_extractor is not None:
+            try:
+                vision_extracted = (
+                    vision_page_extractor(
+                        raw_bytes,
+                        page_number,
+                    )
+                    or ""
+                )
+            except Exception as exc:
+                issues.append(
+                    _issue(
+                        "PDF_PAGE_VISION_FAILED",
+                        (
+                            f"Page {page_number} Vision extraction "
+                            f"failed: {exc}"
+                        ),
+                        severity="WARNING",
+                    )
+                )
+            else:
+                vision_page_text = (
+                    vision_extracted.replace(
+                        "\r\n",
+                        "\n",
+                    )
+                    .replace(
+                        "\r",
+                        "\n",
+                    )
+                    .strip()
+                )
+
+                if vision_page_text:
+                    page_text = vision_page_text
+                    issues.append(
+                        _issue(
+                            "PDF_PAGE_VISION_USED",
+                            (
+                                f"Page {page_number} used "
+                                "Vision fallback because embedded "
+                                "PDF text was unavailable."
+                            ),
+                            severity="WARNING",
+                        )
+                    )
+
         extracted_character_count += len(page_text)
 
         if extracted_character_count > max_extracted_characters:
@@ -380,11 +432,14 @@ def ingest_pdf_document(
             total_pages=total_pages,
             pages=pages,
             issues=[
+                *issues,
                 _issue(
                     "PDF_TEXT_NOT_EXTRACTABLE",
-                    "No extractable text was found. OCR and scanned PDFs "
-                    "are not supported in Phase 5A.",
-                )
+                    (
+                        "No usable text could be extracted from the PDF "
+                        "pages."
+                    ),
+                ),
             ],
         )
 
@@ -397,6 +452,76 @@ def ingest_pdf_document(
         pages=tuple(pages),
         status="READY_FOR_SEMANTIC_ANALYSIS",
         issues=tuple(issues),
+    )
+
+
+
+def pdf_document_requires_vision(
+    document: IngestedPdfDocument,
+) -> bool:
+    """
+    Return True when at least one parsed PDF page has no usable text.
+
+    A mixed PDF can already be READY_FOR_SEMANTIC_ANALYSIS while still
+    containing image-only pages, so document status alone is not enough.
+    """
+
+    if not document.pages:
+        return False
+
+    return any(
+        not page.text.strip()
+        for page in document.pages
+    )
+
+
+def pdf_document_can_attempt_vision(
+    document: IngestedPdfDocument,
+) -> bool:
+    """
+    Return True only for structurally readable PDFs whose pages may be
+    revisited with Vision.
+
+    Invalid, empty, encrypted, over-limit, or otherwise unreadable PDF
+    containers are not promoted to Vision processing.
+    """
+
+    if not document.raw_bytes:
+        return False
+
+    if document.total_pages < 1:
+        return False
+
+    return document.status in {
+        "READY_FOR_SEMANTIC_ANALYSIS",
+        "IMAGE_ONLY_OR_SCANNED_PDF_UNSUPPORTED",
+    }
+
+
+def prepare_pdf_document_for_semantic_analysis(
+    document: IngestedPdfDocument,
+    *,
+    vision_page_extractor: VisionPageExtractor,
+) -> IngestedPdfDocument:
+    """
+    Re-ingest only when the PDF has pages that need Vision recovery.
+
+    Embedded-text pages continue through the existing pypdf path.
+    The supplied Vision extractor is invoked only for pages whose
+    embedded text is empty.
+    """
+
+    if not pdf_document_can_attempt_vision(document):
+        return document
+
+    if not pdf_document_requires_vision(document):
+        return document
+
+    return ingest_pdf_document(
+        role=document.role,
+        filename=document.filename,
+        content=document.raw_bytes,
+        vision_page_extractor=vision_page_extractor,
     )
 
 
