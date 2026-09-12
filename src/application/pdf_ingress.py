@@ -82,8 +82,9 @@ class PdfDocumentSetValidation:
         )
 
 
-DEFAULT_MAX_PDF_BYTES = 20 * 1024 * 1024
+DEFAULT_MAX_PDF_BYTES = 50 * 1024 * 1024
 DEFAULT_MAX_PDF_PAGES = 200
+DEFAULT_MAX_VISION_PAGES = 12
 DEFAULT_MAX_EXTRACTED_CHARACTERS = 500_000
 
 
@@ -132,14 +133,19 @@ def ingest_pdf_document(
     max_extracted_characters: int = (
         DEFAULT_MAX_EXTRACTED_CHARACTERS
     ),
+    max_vision_pages: int = DEFAULT_MAX_VISION_PAGES,
     vision_page_extractor: VisionPageExtractor | None = None,
 ) -> IngestedPdfDocument:
     """
-    Read a text-based PDF without sending the PDF bytes to AI.
+    Read a PDF and preserve page-level source provenance.
 
-    Invalid, encrypted, image-only, and over-limit documents are
-    returned as explicit fail-safe results. Text is never silently
-    truncated.
+    Embedded text is extracted first without AI. When a Vision page
+    extractor is supplied, only pages without usable embedded text are
+    eligible for Vision fallback, and the full candidate count is
+    checked against the configured Vision budget before any Vision call.
+
+    Invalid, encrypted, and over-limit documents are returned as
+    explicit fail-safe results. Text is never silently truncated.
     """
 
     if role not in {
@@ -303,7 +309,15 @@ def ingest_pdf_document(
     pages: list[PdfPageText] = []
     issues: list[PdfIngestionIssue] = []
     extracted_character_count = 0
+    vision_candidate_page_numbers: list[int] = []
 
+    # -----------------------------------------------------
+    # PASS 1 — Embedded PDF text only.
+    #
+    # No Vision calls are permitted in this pass. This lets
+    # us know the complete number of pages that would require
+    # Vision before spending API calls.
+    # -----------------------------------------------------
     for page_number, page in enumerate(
         reader.pages,
         start=1,
@@ -327,62 +341,17 @@ def ingest_pdf_document(
                 ],
             )
 
-        normalized_line_endings = extracted.replace(
-            "\r\n",
-            "\n",
-        ).replace(
-            "\r",
-            "\n",
+        page_text = (
+            extracted.replace(
+                "\r\n",
+                "\n",
+            )
+            .replace(
+                "\r",
+                "\n",
+            )
+            .strip()
         )
-
-        page_text = normalized_line_endings.strip()
-
-        if not page_text and vision_page_extractor is not None:
-            try:
-                vision_extracted = (
-                    vision_page_extractor(
-                        raw_bytes,
-                        page_number,
-                    )
-                    or ""
-                )
-            except Exception as exc:
-                issues.append(
-                    _issue(
-                        "PDF_PAGE_VISION_FAILED",
-                        (
-                            f"Page {page_number} Vision extraction "
-                            f"failed: {exc}"
-                        ),
-                        severity="WARNING",
-                    )
-                )
-            else:
-                vision_page_text = (
-                    vision_extracted.replace(
-                        "\r\n",
-                        "\n",
-                    )
-                    .replace(
-                        "\r",
-                        "\n",
-                    )
-                    .strip()
-                )
-
-                if vision_page_text:
-                    page_text = vision_page_text
-                    issues.append(
-                        _issue(
-                            "PDF_PAGE_VISION_USED",
-                            (
-                                f"Page {page_number} used "
-                                "Vision fallback because embedded "
-                                "PDF text was unavailable."
-                            ),
-                            severity="WARNING",
-                        )
-                    )
 
         extracted_character_count += len(page_text)
 
@@ -403,15 +372,6 @@ def ingest_pdf_document(
                 ],
             )
 
-        if not page_text:
-            issues.append(
-                _issue(
-                    "PDF_PAGE_TEXT_EMPTY",
-                    f"Page {page_number} contains no extractable text.",
-                    severity="WARNING",
-                )
-            )
-
         pages.append(
             PdfPageText(
                 page_number=page_number,
@@ -421,6 +381,149 @@ def ingest_pdf_document(
                 ).hexdigest(),
             )
         )
+
+        if not page_text:
+            vision_candidate_page_numbers.append(
+                page_number
+            )
+
+    # -----------------------------------------------------
+    # Vision budget gate.
+    #
+    # This occurs BEFORE the first Vision call. A document
+    # over budget must therefore consume zero Vision calls.
+    # -----------------------------------------------------
+    if (
+        vision_page_extractor is not None
+        and len(vision_candidate_page_numbers)
+        > max_vision_pages
+    ):
+        return _failed_document(
+            role=role,
+            filename=safe_filename,
+            raw_bytes=raw_bytes,
+            content_sha256=content_hash,
+            status="VISION_PAGE_BUDGET_EXCEEDED",
+            total_pages=total_pages,
+            pages=pages,
+            issues=[
+                _issue(
+                    "PDF_VISION_PAGE_BUDGET_EXCEEDED",
+                    (
+                        "PDF requires Vision processing for "
+                        f"{len(vision_candidate_page_numbers)} page(s), "
+                        "which exceeds the automatic Vision budget of "
+                        f"{max_vision_pages} page(s). "
+                        "No Vision API calls were made."
+                    ),
+                )
+            ],
+        )
+
+    # -----------------------------------------------------
+    # PASS 2 — Vision only for pages that had no embedded
+    # text, and only after the whole-document budget passes.
+    # -----------------------------------------------------
+    if vision_page_extractor is not None:
+        for page_number in vision_candidate_page_numbers:
+            try:
+                vision_extracted = (
+                    vision_page_extractor(
+                        raw_bytes,
+                        page_number,
+                    )
+                    or ""
+                )
+            except Exception as exc:
+                issues.append(
+                    _issue(
+                        "PDF_PAGE_VISION_FAILED",
+                        (
+                            f"Page {page_number} Vision extraction "
+                            f"failed: {exc}"
+                        ),
+                        severity="WARNING",
+                    )
+                )
+                continue
+
+            vision_page_text = (
+                vision_extracted.replace(
+                    "\r\n",
+                    "\n",
+                )
+                .replace(
+                    "\r",
+                    "\n",
+                )
+                .strip()
+            )
+
+            if not vision_page_text:
+                continue
+
+            extracted_character_count += len(
+                vision_page_text
+            )
+
+            if (
+                extracted_character_count
+                > max_extracted_characters
+            ):
+                return _failed_document(
+                    role=role,
+                    filename=safe_filename,
+                    raw_bytes=raw_bytes,
+                    content_sha256=content_hash,
+                    status="DOCUMENT_LIMIT_EXCEEDED",
+                    total_pages=total_pages,
+                    pages=pages,
+                    issues=[
+                        *issues,
+                        _issue(
+                            "PDF_TEXT_LIMIT_EXCEEDED",
+                            (
+                                "Extracted PDF text exceeds "
+                                "the configured limit."
+                            ),
+                        ),
+                    ],
+                )
+
+            pages[page_number - 1] = PdfPageText(
+                page_number=page_number,
+                text=vision_page_text,
+                text_sha256=sha256(
+                    vision_page_text.encode("utf-8")
+                ).hexdigest(),
+            )
+
+            issues.append(
+                _issue(
+                    "PDF_PAGE_VISION_USED",
+                    (
+                        f"Page {page_number} used "
+                        "Vision fallback because embedded "
+                        "PDF text was unavailable."
+                    ),
+                    severity="WARNING",
+                )
+            )
+
+    # Record any page that remains text-empty after the
+    # optional Vision pass.
+    for page_number in vision_candidate_page_numbers:
+        if not pages[page_number - 1].text.strip():
+            issues.append(
+                _issue(
+                    "PDF_PAGE_TEXT_EMPTY",
+                    (
+                        f"Page {page_number} contains "
+                        "no extractable text."
+                    ),
+                    severity="WARNING",
+                )
+            )
 
     if not any(page.text.strip() for page in pages):
         return _failed_document(
