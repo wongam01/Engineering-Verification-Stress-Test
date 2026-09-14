@@ -18,6 +18,22 @@ DEFAULT_TRIAGE_PAGES_PER_SHEET = 8
 DEFAULT_TRIAGE_COLUMNS = 2
 DEFAULT_MAX_TRIAGE_CANDIDATE_PAGES = 96
 
+FOCUSED_TRIAGE_RENDER_DPI = 150
+FOCUSED_TRIAGE_PAGES_PER_SHEET = 4
+FOCUSED_TRIAGE_COLUMNS = 2
+
+FOCUSED_TRIAGE_GUIDANCE = """
+Focused review instructions:
+
+- Give dense numerical tables, small engineering text, measurement
+  result tables, specification ranges, footnotes, and compact
+  annotations the same attention as large photographs or diagrams.
+- Do not prefer visually large images merely because they are easier
+  to see.
+- If small text is still unreadable, do not infer its contents.
+- Continue to select pages only by their visible engineering relevance.
+"""
+
 DEFAULT_THUMBNAIL_WIDTH = 500
 DEFAULT_THUMBNAIL_HEIGHT = 650
 DEFAULT_LABEL_HEIGHT = 32
@@ -404,6 +420,7 @@ def recommend_pdf_pages_with_vision(
     max_selected_pages: int,
     client,
     model: str = DEFAULT_TRIAGE_MODEL,
+    triage_mode: str = "coarse",
 ) -> PdfPageTriageResult:
     """
     Recommend a bounded set of pages for later high-detail transcription.
@@ -411,6 +428,14 @@ def recommend_pdf_pages_with_vision(
     The raw PDF is never sent to the AI service. Only low-resolution
     PNG contact sheets are supplied.
     """
+
+    if triage_mode not in {
+        "coarse",
+        "focused",
+    }:
+        raise ValueError(
+            "triage_mode must be coarse or focused."
+        )
 
     if document_role not in {
         "requirement",
@@ -438,13 +463,30 @@ def recommend_pdf_pages_with_vision(
             "Vision triage candidate-page limit exceeded."
         )
 
-    contact_sheets = render_pdf_contact_sheets(
-        pdf_bytes,
-        page_numbers=candidate_pages,
-    )
+    if triage_mode == "focused":
+        contact_sheets = render_pdf_contact_sheets(
+            pdf_bytes,
+            page_numbers=candidate_pages,
+            dpi=FOCUSED_TRIAGE_RENDER_DPI,
+            pages_per_sheet=(
+                FOCUSED_TRIAGE_PAGES_PER_SHEET
+            ),
+            columns=FOCUSED_TRIAGE_COLUMNS,
+        )
+    else:
+        contact_sheets = render_pdf_contact_sheets(
+            pdf_bytes,
+            page_numbers=candidate_pages,
+        )
 
     prompt = (
         TRIAGE_PROMPT
+        + (
+            "\n\n"
+            + FOCUSED_TRIAGE_GUIDANCE
+            if triage_mode == "focused"
+            else ""
+        )
         + "\n\nDocument role: "
         + document_role
         + "\nCandidate PDF pages: "
@@ -475,7 +517,11 @@ def recommend_pdf_pages_with_vision(
                     "data:image/png;base64,"
                     + encoded
                 ),
-                "detail": "low",
+                "detail": (
+                    "high"
+                    if triage_mode == "focused"
+                    else "low"
+                ),
             }
         )
 
@@ -497,4 +543,107 @@ def recommend_pdf_pages_with_vision(
         max_selected_pages=(
             max_selected_pages
         ),
+    )
+
+
+DEFAULT_FOCUSED_TRIAGE_CANDIDATE_PAGES = 24
+
+
+@dataclass(frozen=True)
+class PdfTwoStageTriageResult:
+    coarse_result: PdfPageTriageResult | None
+    focused_result: PdfPageTriageResult
+
+    @property
+    def selected_page_numbers(self) -> tuple[int, ...]:
+        return self.focused_result.selected_page_numbers
+
+    @property
+    def reasons(self) -> tuple[tuple[int, str], ...]:
+        return self.focused_result.reasons
+
+    @property
+    def summary(self) -> str:
+        return self.focused_result.summary
+
+
+def recommend_pdf_pages_two_stage(
+    pdf_bytes: bytes,
+    *,
+    candidate_page_numbers: Sequence[int],
+    document_role: str,
+    max_selected_pages: int,
+    client,
+    model: str = DEFAULT_TRIAGE_MODEL,
+) -> PdfTwoStageTriageResult:
+    """
+    Perform bounded two-stage engineering-document page triage.
+
+    Smaller candidate sets go directly to focused review so that
+    potentially relevant pages are not discarded by a coarse pass.
+
+    Larger candidate sets are first reduced with low-resolution
+    coarse triage, then reranked with focused higher-resolution
+    review.
+
+    This function only selects pages for later transcription.
+    It does not perform engineering verification.
+    """
+
+    if max_selected_pages < 1:
+        raise ValueError(
+            "max_selected_pages must be at least 1."
+        )
+
+    candidate_pages = _canonical_page_numbers(
+        candidate_page_numbers
+    )
+
+    if not candidate_pages:
+        raise ValueError(
+            "candidate_page_numbers must not be empty."
+        )
+
+    focused_candidate_limit = max(
+        DEFAULT_FOCUSED_TRIAGE_CANDIDATE_PAGES,
+        max_selected_pages,
+    )
+
+    coarse_result: PdfPageTriageResult | None = None
+
+    if len(candidate_pages) > focused_candidate_limit:
+        coarse_result = recommend_pdf_pages_with_vision(
+            pdf_bytes,
+            candidate_page_numbers=candidate_pages,
+            document_role=document_role,
+            max_selected_pages=focused_candidate_limit,
+            client=client,
+            model=model,
+            triage_mode="coarse",
+        )
+
+        if not coarse_result.selected_page_numbers:
+            raise ValueError(
+                "Coarse Vision triage returned no candidate pages."
+            )
+
+        focused_candidate_pages = (
+            coarse_result.selected_page_numbers
+        )
+    else:
+        focused_candidate_pages = candidate_pages
+
+    focused_result = recommend_pdf_pages_with_vision(
+        pdf_bytes,
+        candidate_page_numbers=focused_candidate_pages,
+        document_role=document_role,
+        max_selected_pages=max_selected_pages,
+        client=client,
+        model=model,
+        triage_mode="focused",
+    )
+
+    return PdfTwoStageTriageResult(
+        coarse_result=coarse_result,
+        focused_result=focused_result,
     )
