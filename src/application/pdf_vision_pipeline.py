@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
-from src.ai.pdf_page_triage import PdfPageTriageResult
+from src.ai.pdf_page_triage import (
+    PdfPageTriageResult,
+    PdfTwoStageTriageResult,
+    recommend_pdf_pages_two_stage,
+)
 from src.application.pdf_ingress import (
     IngestedPdfDocument,
     VisionPageExtractor,
@@ -33,6 +37,7 @@ class PdfVisionPreparationResult:
     document: IngestedPdfDocument
     selection_plan: PdfVisionSelectionPlan | None = None
     triage_result: PdfPageTriageResult | None = None
+    coarse_triage_result: PdfPageTriageResult | None = None
     selected_page_numbers: tuple[int, ...] = ()
     issue_codes: tuple[str, ...] = ()
 
@@ -173,5 +178,63 @@ def prepare_pdf_document_with_page_triage(
         triage_result=triage_result,
         selected_page_numbers=(
             selected_page_numbers
+        ),
+    )
+
+
+def prepare_pdf_document_with_two_stage_triage(
+    document: IngestedPdfDocument,
+    *,
+    vision_page_extractor: VisionPageExtractor,
+    triage_client,
+) -> PdfVisionPreparationResult:
+    """
+    Prepare a PDF using bounded two-stage page triage.
+
+    Documents within the automatic Vision-page budget bypass triage
+    and retain the existing automatic-all behavior.
+
+    Over-budget documents use generic two-stage triage, then pass the
+    focused recommendation through the same deterministic selection
+    contract and selected-page Vision ingress used by the existing
+    application pipeline.
+
+    Coarse and focused triage provenance remain separately available.
+    """
+
+    decision: PdfTwoStageTriageResult | None = None
+
+    def two_stage_recommender(
+        current_document: IngestedPdfDocument,
+        plan: PdfVisionSelectionPlan,
+    ) -> PdfPageTriageResult:
+        nonlocal decision
+
+        decision = recommend_pdf_pages_two_stage(
+            current_document.raw_bytes,
+            candidate_page_numbers=(
+                plan.candidate_page_numbers
+            ),
+            document_role=current_document.role,
+            max_selected_pages=(
+                plan.max_selected_pages
+            ),
+            client=triage_client,
+        )
+
+        return decision.focused_result
+
+    result = prepare_pdf_document_with_page_triage(
+        document,
+        vision_page_extractor=vision_page_extractor,
+        triage_recommender=two_stage_recommender,
+    )
+
+    return replace(
+        result,
+        coarse_triage_result=(
+            decision.coarse_result
+            if decision is not None
+            else None
         ),
     )
