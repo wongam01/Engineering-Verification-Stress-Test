@@ -56,10 +56,22 @@ class IngestedPdfDocument:
     pages: tuple[PdfPageText, ...]
     status: str
     issues: tuple[PdfIngestionIssue, ...] = ()
+    vision_processed_page_numbers: tuple[int, ...] = ()
+    vision_unprocessed_candidate_page_numbers: tuple[int, ...] = ()
 
     @property
     def ready_for_semantic_analysis(self) -> bool:
-        return self.status == "READY_FOR_SEMANTIC_ANALYSIS"
+        return self.status in {
+            "READY_FOR_SEMANTIC_ANALYSIS",
+            "READY_FOR_SELECTED_PAGE_ANALYSIS",
+        }
+
+    @property
+    def full_document_coverage(self) -> bool:
+        return (
+            self.ready_for_semantic_analysis
+            and not self.vision_unprocessed_candidate_page_numbers
+        )
 
     def page(self, page_number: int) -> PdfPageText | None:
         for page in self.pages:
@@ -110,6 +122,8 @@ def _failed_document(
     issues: Sequence[PdfIngestionIssue],
     total_pages: int = 0,
     pages: Sequence[PdfPageText] = (),
+    vision_processed_page_numbers: Sequence[int] = (),
+    vision_unprocessed_candidate_page_numbers: Sequence[int] = (),
 ) -> IngestedPdfDocument:
     return IngestedPdfDocument(
         role=role,
@@ -120,6 +134,12 @@ def _failed_document(
         pages=tuple(pages),
         status=status,
         issues=tuple(issues),
+        vision_processed_page_numbers=tuple(
+            vision_processed_page_numbers
+        ),
+        vision_unprocessed_candidate_page_numbers=tuple(
+            vision_unprocessed_candidate_page_numbers
+        ),
     )
 
 
@@ -134,6 +154,7 @@ def ingest_pdf_document(
         DEFAULT_MAX_EXTRACTED_CHARACTERS
     ),
     max_vision_pages: int = DEFAULT_MAX_VISION_PAGES,
+    vision_page_numbers: Sequence[int] | None = None,
     vision_page_extractor: VisionPageExtractor | None = None,
 ) -> IngestedPdfDocument:
     """
@@ -388,13 +409,78 @@ def ingest_pdf_document(
             )
 
     # -----------------------------------------------------
-    # Vision budget gate.
+    # Resolve explicit selected-page scope.
     #
-    # This occurs BEFORE the first Vision call. A document
-    # over budget must therefore consume zero Vision calls.
+    # When no explicit scope is supplied, the existing behavior remains:
+    # every Vision candidate must fit within the automatic page budget.
+    #
+    # When an explicit scope is supplied, only that validated subset is
+    # eligible for Vision processing.
     # -----------------------------------------------------
+    explicit_vision_selection = (
+        vision_page_numbers is not None
+    )
+
+    if explicit_vision_selection:
+        raw_selection = tuple(
+            vision_page_numbers or ()
+        )
+
+        selection_invalid = (
+            any(
+                isinstance(page_number, bool)
+                or not isinstance(page_number, int)
+                for page_number in raw_selection
+            )
+            or len(raw_selection) != len(set(raw_selection))
+            or len(raw_selection) > max_vision_pages
+            or (
+                bool(vision_candidate_page_numbers)
+                and not raw_selection
+            )
+            or any(
+                page_number
+                not in set(vision_candidate_page_numbers)
+                for page_number in raw_selection
+            )
+        )
+
+        if selection_invalid:
+            return _failed_document(
+                role=role,
+                filename=safe_filename,
+                raw_bytes=raw_bytes,
+                content_sha256=content_hash,
+                status="VISION_PAGE_SELECTION_INVALID",
+                total_pages=total_pages,
+                pages=pages,
+                issues=[
+                    _issue(
+                        "PDF_VISION_PAGE_SELECTION_INVALID",
+                        (
+                            "The selected Vision page scope is invalid. "
+                            "Selected pages must be unique Vision "
+                            "candidates and must not exceed the "
+                            f"{max_vision_pages}-page budget."
+                        ),
+                    )
+                ],
+                vision_unprocessed_candidate_page_numbers=(
+                    vision_candidate_page_numbers
+                ),
+            )
+
+        selected_vision_page_numbers = tuple(
+            sorted(raw_selection)
+        )
+    else:
+        selected_vision_page_numbers = tuple(
+            vision_candidate_page_numbers
+        )
+
     if (
         vision_page_extractor is not None
+        and not explicit_vision_selection
         and len(vision_candidate_page_numbers)
         > max_vision_pages
     ):
@@ -418,14 +504,45 @@ def ingest_pdf_document(
                     ),
                 )
             ],
+            vision_unprocessed_candidate_page_numbers=(
+                vision_candidate_page_numbers
+            ),
+        )
+
+    if (
+        explicit_vision_selection
+        and selected_vision_page_numbers
+        and vision_page_extractor is None
+    ):
+        return _failed_document(
+            role=role,
+            filename=safe_filename,
+            raw_bytes=raw_bytes,
+            content_sha256=content_hash,
+            status="VISION_PAGE_SELECTION_INVALID",
+            total_pages=total_pages,
+            pages=pages,
+            issues=[
+                _issue(
+                    "PDF_VISION_PAGE_EXTRACTOR_REQUIRED",
+                    (
+                        "A Vision page extractor is required when an "
+                        "explicit Vision page scope is supplied."
+                    ),
+                )
+            ],
+            vision_unprocessed_candidate_page_numbers=(
+                vision_candidate_page_numbers
+            ),
         )
 
     # -----------------------------------------------------
-    # PASS 2 — Vision only for pages that had no embedded
-    # text, and only after the whole-document budget passes.
+    # PASS 2 — Vision only for the validated selected scope.
     # -----------------------------------------------------
+    vision_processed_page_numbers: list[int] = []
+
     if vision_page_extractor is not None:
-        for page_number in vision_candidate_page_numbers:
+        for page_number in selected_vision_page_numbers:
             try:
                 vision_extracted = (
                     vision_page_extractor(
@@ -488,6 +605,16 @@ def ingest_pdf_document(
                             ),
                         ),
                     ],
+                    vision_processed_page_numbers=(
+                        vision_processed_page_numbers
+                    ),
+                    vision_unprocessed_candidate_page_numbers=tuple(
+                        page_number
+                        for page_number
+                        in vision_candidate_page_numbers
+                        if page_number
+                        not in vision_processed_page_numbers
+                    ),
                 )
 
             pages[page_number - 1] = PdfPageText(
@@ -496,6 +623,10 @@ def ingest_pdf_document(
                 text_sha256=sha256(
                     vision_page_text.encode("utf-8")
                 ).hexdigest(),
+            )
+
+            vision_processed_page_numbers.append(
+                page_number
             )
 
             issues.append(
@@ -508,6 +639,46 @@ def ingest_pdf_document(
                     ),
                     severity="WARNING",
                 )
+            )
+
+    if explicit_vision_selection:
+        incomplete_selected_pages = tuple(
+            page_number
+            for page_number
+            in selected_vision_page_numbers
+            if page_number
+            not in vision_processed_page_numbers
+        )
+
+        if incomplete_selected_pages:
+            return _failed_document(
+                role=role,
+                filename=safe_filename,
+                raw_bytes=raw_bytes,
+                content_sha256=content_hash,
+                status="VISION_SELECTED_PAGE_EXTRACTION_INCOMPLETE",
+                total_pages=total_pages,
+                pages=pages,
+                issues=[
+                    *issues,
+                    _issue(
+                        "PDF_VISION_SELECTED_PAGE_EXTRACTION_INCOMPLETE",
+                        (
+                            "One or more explicitly selected Vision "
+                            "pages did not produce usable text."
+                        ),
+                    ),
+                ],
+                vision_processed_page_numbers=(
+                    vision_processed_page_numbers
+                ),
+                vision_unprocessed_candidate_page_numbers=tuple(
+                    page_number
+                    for page_number
+                    in vision_candidate_page_numbers
+                    if page_number
+                    not in vision_processed_page_numbers
+                ),
             )
 
     # Record any page that remains text-empty after the
@@ -546,6 +717,32 @@ def ingest_pdf_document(
             ],
         )
 
+    vision_unprocessed_candidate_page_numbers = tuple(
+        page_number
+        for page_number in vision_candidate_page_numbers
+        if page_number not in vision_processed_page_numbers
+    )
+
+    if (
+        explicit_vision_selection
+        and vision_unprocessed_candidate_page_numbers
+    ):
+        final_status = "READY_FOR_SELECTED_PAGE_ANALYSIS"
+
+        issues.append(
+            _issue(
+                "PDF_VISION_SELECTED_PAGE_SCOPE_USED",
+                (
+                    "Semantic analysis is limited to the explicitly "
+                    "selected Vision page scope. Unprocessed Vision "
+                    "candidate pages remain outside the analyzed scope."
+                ),
+                severity="WARNING",
+            )
+        )
+    else:
+        final_status = "READY_FOR_SEMANTIC_ANALYSIS"
+
     return IngestedPdfDocument(
         role=role,
         filename=safe_filename,
@@ -553,8 +750,14 @@ def ingest_pdf_document(
         raw_bytes=raw_bytes,
         total_pages=total_pages,
         pages=tuple(pages),
-        status="READY_FOR_SEMANTIC_ANALYSIS",
+        status=final_status,
         issues=tuple(issues),
+        vision_processed_page_numbers=tuple(
+            vision_processed_page_numbers
+        ),
+        vision_unprocessed_candidate_page_numbers=(
+            vision_unprocessed_candidate_page_numbers
+        ),
     )
 
 
@@ -736,6 +939,17 @@ def build_semantic_document(
             for page in document.pages
         ),
         source_format="pdf",
+        analysis_scope=(
+            "FULL_DOCUMENT"
+            if document.full_document_coverage
+            else "SELECTED_PAGES"
+        ),
+        vision_processed_page_numbers=(
+            document.vision_processed_page_numbers
+        ),
+        vision_unprocessed_candidate_page_numbers=(
+            document.vision_unprocessed_candidate_page_numbers
+        ),
     )
 
 

@@ -72,6 +72,12 @@ class SemanticDocument:
         "text",
         "pdf",
     ] = "text"
+    analysis_scope: Literal[
+        "FULL_DOCUMENT",
+        "SELECTED_PAGES",
+    ] = "FULL_DOCUMENT"
+    vision_processed_page_numbers: tuple[int, ...] = ()
+    vision_unprocessed_candidate_page_numbers: tuple[int, ...] = ()
 
 
 @dataclass
