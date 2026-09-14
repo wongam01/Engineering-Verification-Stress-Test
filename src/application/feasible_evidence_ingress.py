@@ -81,6 +81,19 @@ class FeasibleEvidenceAnalysisResult:
     ] = field(
         default_factory=list
     )
+    analysis_scope: str = "FULL_DOCUMENT"
+    vision_processed_page_numbers: tuple[int, ...] = ()
+    vision_unprocessed_candidate_page_numbers: tuple[int, ...] = ()
+
+    @property
+    def full_document_coverage(
+        self,
+    ) -> bool:
+        return (
+            self.analysis_scope
+            == "FULL_DOCUMENT"
+        )
+
 
 
 _PAGE_MARKER_LINE = re.compile(
@@ -294,6 +307,18 @@ def analyze_feasible_evidence_pdf(
                     document.content_sha256
                 ),
                 candidates=[],
+                analysis_scope="NOT_ANALYZED",
+                vision_processed_page_numbers=(
+                    document.vision_processed_page_numbers
+                ),
+                vision_unprocessed_candidate_page_numbers=(
+                    document.vision_unprocessed_candidate_page_numbers
+                    or tuple(
+                        page.page_number
+                        for page in document.pages
+                        if not page.text.strip()
+                    )
+                ),
             )
         )
 
@@ -418,6 +443,17 @@ def analyze_feasible_evidence_pdf(
                 document.content_sha256
             ),
             candidates=candidates,
+            analysis_scope=(
+                "FULL_DOCUMENT"
+                if document.full_document_coverage
+                else "SELECTED_PAGES"
+            ),
+            vision_processed_page_numbers=(
+                document.vision_processed_page_numbers
+            ),
+            vision_unprocessed_candidate_page_numbers=(
+                document.vision_unprocessed_candidate_page_numbers
+            ),
         )
     )
 
@@ -537,6 +573,18 @@ class FeasibleEvidencePrefill:
     source_pages: tuple[int, ...]
     source_block_id: str | None
     source_location_status: str
+    analysis_scope: str = "FULL_DOCUMENT"
+    vision_processed_page_numbers: tuple[int, ...] = ()
+    vision_unprocessed_candidate_page_numbers: tuple[int, ...] = ()
+
+    @property
+    def full_document_coverage(
+        self,
+    ) -> bool:
+        return (
+            self.analysis_scope
+            == "FULL_DOCUMENT"
+        )
 
 
 @dataclass
@@ -552,6 +600,18 @@ class FeasibleEvidencePrefillResult:
     issues: list[str] = field(
         default_factory=list
     )
+    analysis_scope: str = "FULL_DOCUMENT"
+    vision_processed_page_numbers: tuple[int, ...] = ()
+    vision_unprocessed_candidate_page_numbers: tuple[int, ...] = ()
+
+    @property
+    def full_document_coverage(
+        self,
+    ) -> bool:
+        return (
+            self.analysis_scope
+            == "FULL_DOCUMENT"
+        )
 
     @property
     def ready(
@@ -616,6 +676,15 @@ def build_feasible_evidence_prefills(
                         unknown_ids
                     )
                 ],
+                analysis_scope=(
+                    analysis.analysis_scope
+                ),
+                vision_processed_page_numbers=(
+                    analysis.vision_processed_page_numbers
+                ),
+                vision_unprocessed_candidate_page_numbers=(
+                    analysis.vision_unprocessed_candidate_page_numbers
+                ),
             )
         )
 
@@ -824,6 +893,15 @@ def build_feasible_evidence_prefills(
                 source_location_status=(
                     candidate.source_location_status
                 ),
+                analysis_scope=(
+                    analysis.analysis_scope
+                ),
+                vision_processed_page_numbers=(
+                    analysis.vision_processed_page_numbers
+                ),
+                vision_unprocessed_candidate_page_numbers=(
+                    analysis.vision_unprocessed_candidate_page_numbers
+                ),
             )
         )
 
@@ -845,5 +923,48 @@ def build_feasible_evidence_prefills(
             status=status,
             prefills=prefills,
             issues=issues,
+            analysis_scope=(
+                analysis.analysis_scope
+            ),
+            vision_processed_page_numbers=(
+                analysis.vision_processed_page_numbers
+            ),
+            vision_unprocessed_candidate_page_numbers=(
+                analysis.vision_unprocessed_candidate_page_numbers
+            ),
         )
+    )
+
+
+def build_feasible_evidence_trace(
+    prefill: FeasibleEvidencePrefill,
+):
+    """
+    Convert one approved source-bound Feasible Evidence prefill
+    into a rich Application-level EvidenceTrace.
+
+    The validated Core model remains unchanged.
+    """
+    from src.application.models import EvidenceTrace
+
+    return EvidenceTrace(
+        role="feasible_domain",
+        target_id=prefill.canonical_variable,
+        source_name=prefill.source_name,
+        source_text=prefill.source_text,
+        source_sha256=prefill.source_sha256,
+        source_page=prefill.source_page,
+        source_pages=prefill.source_pages,
+        source_block_id=prefill.source_block_id,
+        source_reference=prefill.evidence_reference,
+        source_location_status=(
+            prefill.source_location_status
+        ),
+        analysis_scope=prefill.analysis_scope,
+        vision_processed_page_numbers=(
+            prefill.vision_processed_page_numbers
+        ),
+        vision_unprocessed_candidate_page_numbers=(
+            prefill.vision_unprocessed_candidate_page_numbers
+        ),
     )

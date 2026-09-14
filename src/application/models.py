@@ -74,6 +74,9 @@ class EvidenceTrace:
     source_block_id: str | None = None
     source_reference: str | None = None
     source_location_status: str | None = None
+    analysis_scope: str | None = None
+    vision_processed_page_numbers: tuple[int, ...] = ()
+    vision_unprocessed_candidate_page_numbers: tuple[int, ...] = ()
 
     def to_dict(
         self,
@@ -113,6 +116,25 @@ class EvidenceTrace:
         if self.source_location_status is not None:
             data["source_location_status"] = (
                 self.source_location_status
+            )
+
+        if self.analysis_scope is not None:
+            data["analysis_scope"] = (
+                self.analysis_scope
+            )
+
+        if self.vision_processed_page_numbers:
+            data[
+                "vision_processed_page_numbers"
+            ] = list(
+                self.vision_processed_page_numbers
+            )
+
+        if self.vision_unprocessed_candidate_page_numbers:
+            data[
+                "vision_unprocessed_candidate_page_numbers"
+            ] = list(
+                self.vision_unprocessed_candidate_page_numbers
             )
 
         return data

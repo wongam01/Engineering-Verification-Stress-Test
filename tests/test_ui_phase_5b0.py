@@ -141,7 +141,7 @@ class UiPhase5B0Test(unittest.TestCase):
             "분류 근거 원문 (Advanced)",
             "원본 PDF 페이지 보기",
             "엔지니어 입력 운영 근거",
-            "현재 Phase 5B-0에서는 F가 PDF에서 자동",
+            "AI extraction alone does not authorize F.",
         ):
             self.assertIn(label, source)
 

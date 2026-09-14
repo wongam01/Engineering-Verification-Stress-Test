@@ -27,6 +27,7 @@ from src.ai.pdf_page_vision import (
 from src.application.feasible_evidence_ingress import (
     analyze_feasible_evidence_pdf,
     build_feasible_evidence_prefills,
+    build_feasible_evidence_trace,
     confirm_ambiguous_feasible_source_location,
 )
 from src.application.evidence_trace import (
@@ -217,6 +218,7 @@ for key, default in {
     "verification_review_state": None,
     "prepared_semantic_review_signature": None,
     "prepared_feasible_review_signature": None,
+    "prepared_feasible_evidence_traces": [],
     "vision_prepared_pdf_documents": {},
     "vision_prepared_pdf_signature": None,
     "formal_model_revision": 0,
@@ -834,6 +836,10 @@ if st.button(
             st.session_state[
                 "base_case"
             ] = None
+
+            st.session_state[
+                "prepared_feasible_evidence_traces"
+            ] = []
 
         except Exception as exc:
             st.error(
@@ -2191,6 +2197,8 @@ if analysis is not None:
             type="primary",
         ):
             try:
+                prepared_feasible_evidence_traces = []
+
                 errors = list(
                     feasible_binding_errors
                 )
@@ -2260,6 +2268,11 @@ if analysis is not None:
                             ),
                         )
                     )
+
+                    prepared_feasible_evidence_traces = [
+                        build_feasible_evidence_trace(prefill)
+                        for prefill in feasible_prefill_result.prefills
+                    ]
 
                     if not feasible_prefill_result.ready:
                         errors.extend(
@@ -2525,6 +2538,10 @@ if analysis is not None:
                 st.session_state[
                     "base_case"
                 ] = base_case
+
+                st.session_state[
+                    "prepared_feasible_evidence_traces"
+                ] = prepared_feasible_evidence_traces
 
                 st.session_state[
                     "prepared_semantic_review_signature"
@@ -3048,7 +3065,10 @@ if (
                                 formal_ingress.case,
                                 review_records,
                                 evidence=(
-                                    formal_ingress.evidence
+                                    list(formal_ingress.evidence)
+                                    + list(
+                                        st.session_state["prepared_feasible_evidence_traces"]
+                                    )
                                 ),
                                 generate_patches=False,
                             )
@@ -3554,7 +3574,7 @@ if verification_result is not None:
             "설계 요구조건 (Requirement)",
         "verification":
             "검사 기준 (Verification Criterion)",
-        "feasible":
+        "feasible_domain":
             "현실 가능 근거 (Feasible Evidence)",
     }
 
@@ -3569,7 +3589,7 @@ if verification_result is not None:
                 evidence.source_page,
             )
 
-        if evidence.role == "feasible":
+        if evidence.role == "feasible_domain":
             with st.container(border=True):
                 st.markdown(
                     "#### 엔지니어 입력 운영 근거 "
@@ -3612,10 +3632,55 @@ if verification_result is not None:
                     )
                 )
 
+                if evidence.analysis_scope is not None:
+                    st.caption(
+                        "Analysis Scope · "
+                        + format_code_label(
+                            evidence.analysis_scope
+                        )
+                    )
+
+                if evidence.vision_processed_page_numbers:
+                    st.caption(
+                        "Vision Analyzed Pages · "
+                        + ", ".join(
+                            str(page)
+                            for page
+                            in evidence
+                            .vision_processed_page_numbers
+                        )
+                    )
+
+                if (
+                    evidence
+                    .vision_unprocessed_candidate_page_numbers
+                ):
+                    st.caption(
+                        "Unprocessed Candidate Pages · "
+                        + ", ".join(
+                            str(page)
+                            for page
+                            in evidence
+                            .vision_unprocessed_candidate_page_numbers
+                        )
+                    )
+
+                if (
+                    evidence.analysis_scope
+                    == "SELECTED_PAGES"
+                ):
+                    st.warning(
+                        "This Feasible Evidence was derived "
+                        "from selected PDF pages. Candidate "
+                        "pages listed as unprocessed were not "
+                        "included in the high-detail analysis."
+                    )
+
                 st.info(
-                    "현재 Phase 5B-0에서는 F가 PDF에서 자동 "
-                    "추출된 값이 아닙니다. 엔지니어가 입력하고 "
-                    "근거 기반임을 확인한 Operating Evidence입니다."
+                    "이 Feasible Domain은 Operating Evidence에서 "
+                    "추출된 후보를 엔지니어가 검토·승인한 후 "
+                    "Formal Model에 적용한 값입니다. "
+                    "AI extraction alone does not authorize F."
                 )
 
                 with st.expander(

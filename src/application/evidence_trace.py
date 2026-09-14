@@ -191,6 +191,9 @@ def assemble_workflow_evidence(
 
     traces = []
     feasible_identities = set()
+    provided_feasible_sources: set[
+        tuple[str, str]
+    ] = set()
 
     def evidence_identity(
         trace: EvidenceTrace,
@@ -205,6 +208,9 @@ def assemble_workflow_evidence(
             trace.source_page,
             trace.source_pages,
             trace.source_block_id,
+            trace.analysis_scope,
+            trace.vision_processed_page_numbers,
+            trace.vision_unprocessed_candidate_page_numbers,
         )
 
     for trace in (
@@ -217,6 +223,14 @@ def assemble_workflow_evidence(
                 trace
             )
             continue
+
+        if trace.source_reference is not None:
+            provided_feasible_sources.add(
+                (
+                    trace.target_id,
+                    trace.source_reference,
+                )
+            )
 
         identity = evidence_identity(
             trace
@@ -237,6 +251,16 @@ def assemble_workflow_evidence(
             case
         )
     ):
+        if (
+            trace.source_reference is not None
+            and (
+                trace.target_id,
+                trace.source_reference,
+            )
+            in provided_feasible_sources
+        ):
+            continue
+
         identity = (
             evidence_identity(
                 trace
