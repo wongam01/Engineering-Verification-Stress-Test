@@ -531,8 +531,8 @@ else:
             "Requirement document text",
             height=220,
             placeholder=(
-                "R1. Hardness H shall be between "
-                "50 HRC and 57 HRC inclusive."
+                "R1. Pressure P shall be between "
+                "2.0 MPa and 3.0 MPa inclusive."
             ),
         )
 
@@ -544,8 +544,8 @@ else:
             "Verification document text",
             height=220,
             placeholder=(
-                "V1. The inspection accepts the part "
-                "when hardness H is at least 50 HRC."
+                "V1. The inspection accepts the system "
+                "when pressure P is at least 2.0 MPa."
             ),
         )
 

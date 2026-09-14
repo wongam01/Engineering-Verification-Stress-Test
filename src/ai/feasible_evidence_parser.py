@@ -314,21 +314,21 @@ evidence_type은 다음 중 하나입니다.
 
 추출 가능한 예:
 
-"Measured production hardness ranged from 58 to 60 HRC."
+"Measured operating pressure P ranged from 2.3 to 2.8 MPa."
 
-variable = H 또는 원문에 명시된 실제 variable name
-min = 58
-max = 60
-unit = HRC
+variable = P 또는 원문에 명시된 실제 variable name
+min = 2.3
+max = 2.8
+unit = MPa
 evidence_type = observed_test_data
 
 또는 단일 관측값:
 
-"Measured hardness H was 59 HRC."
+"Measured pressure P was 2.6 MPa."
 
 이 경우:
-min = 59
-max = 59
+min = 2.6
+max = 2.6
 
 중요한 규칙:
 
