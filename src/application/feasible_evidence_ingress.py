@@ -231,15 +231,40 @@ def _default_extractor(
     text: str,
     source_name: str,
 ) -> list[dict[str, Any]]:
-    from src.ai.feasible_evidence_parser import (
-        extract_feasible_evidence_from_document,
+    """
+    Run Feasible Evidence extraction through the persistent,
+    content-addressed AI extraction cache.
+
+    Only candidate extraction is cached.
+    Engineer approval, Role Grounding, Formalization,
+    witnesses, and solver outcomes remain outside this cache.
+    """
+
+    from src.ai import (
+        feasible_evidence_parser,
+        multi_constraint_parser,
+    )
+    from src.ai.semantic_extraction_cache import (
+        cached_semantic_extraction,
     )
 
-    return (
-        extract_feasible_evidence_from_document(
-            text,
-            source_name,
-        )
+    return cached_semantic_extraction(
+        namespace="feasible_evidence_extraction",
+        text=text,
+        role="feasible",
+        source_name=source_name,
+        model="gpt-5.6-terra",
+        implementation_files=(
+            feasible_evidence_parser.__file__,
+            multi_constraint_parser.__file__,
+        ),
+        compute=lambda: (
+            feasible_evidence_parser
+            .extract_feasible_evidence_from_document(
+                text,
+                source_name,
+            )
+        ),
     )
 
 

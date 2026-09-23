@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -97,6 +97,7 @@ class PdfDocumentSetValidation:
 DEFAULT_MAX_PDF_BYTES = 50 * 1024 * 1024
 DEFAULT_MAX_PDF_PAGES = 200
 DEFAULT_MAX_VISION_PAGES = 12
+DEFAULT_MAX_DEEP_VISION_PAGES = 100
 DEFAULT_MAX_EXTRACTED_CHARACTERS = 500_000
 
 
@@ -802,6 +803,251 @@ def pdf_document_can_attempt_vision(
         "READY_FOR_SEMANTIC_ANALYSIS",
         "IMAGE_ONLY_OR_SCANNED_PDF_UNSUPPORTED",
     }
+
+
+def rebind_pdf_document_role(
+    document: IngestedPdfDocument,
+    role: PdfDocumentRole,
+) -> IngestedPdfDocument:
+    """
+    Reuse one physically prepared PDF across semantic role views.
+
+    Vision transcription is source transcription only; the role is
+    applied later as an analysis lens. All physical provenance,
+    page text, hashes, and Vision coverage remain unchanged.
+    """
+
+    if role not in {
+        "requirement",
+        "verification",
+        "feasible",
+    }:
+        raise ValueError(
+            "PDF role must be requirement, verification, or feasible."
+        )
+
+    return replace(
+        document,
+        role=role,
+    )
+
+
+def pdf_document_vision_candidate_page_numbers(
+    document: IngestedPdfDocument,
+) -> tuple[int, ...]:
+    """
+    Return source page numbers that have no usable embedded text.
+
+    This is deterministic and does not invoke Vision.
+    """
+
+    return tuple(
+        page.page_number
+        for page in document.pages
+        if not page.text.strip()
+    )
+
+
+def pdf_document_should_attempt_automatic_vision(
+    document: IngestedPdfDocument,
+    *,
+    max_vision_pages: int = DEFAULT_MAX_VISION_PAGES,
+) -> bool:
+    """
+    Automatic Vision is permitted only when every missing-text
+    page fits within the configured safety budget.
+
+    A mixed PDF with usable embedded text may still be analyzed
+    without automatic Vision when the missing-page count exceeds
+    the budget. Coverage must then remain partial / selected-pages.
+    """
+
+    if not pdf_document_can_attempt_vision(
+        document
+    ):
+        return False
+
+    candidate_pages = (
+        pdf_document_vision_candidate_page_numbers(
+            document
+        )
+    )
+
+    return (
+        bool(candidate_pages)
+        and len(candidate_pages)
+        <= max_vision_pages
+    )
+
+
+def pdf_document_source_coverage_status(
+    document: IngestedPdfDocument,
+    *,
+    max_vision_pages: int = DEFAULT_MAX_VISION_PAGES,
+) -> str:
+    """
+    Classify deterministic source coverage before semantic AI analysis.
+
+    TEXT_READY
+        All parsed pages contain usable embedded text.
+
+    AUTO_VISION
+        Missing-text pages exist, but all fit within the configured
+        automatic Vision safety budget.
+
+    PARTIAL_TEXT
+        Usable embedded text exists, but missing-text pages exceed the
+        automatic Vision budget. Only grounded embedded-text content is
+        eligible for downstream analysis.
+
+    VISION_DEFERRED
+        No usable embedded text exists and the automatic Vision budget
+        is exceeded. The source remains registered but is not used in
+        downstream reasoning.
+
+    BLOCKED
+        The PDF container itself is not usable for supported analysis.
+    """
+
+    candidate_pages = (
+        pdf_document_vision_candidate_page_numbers(
+            document
+        )
+    )
+
+    has_usable_text = any(
+        page.text.strip()
+        for page in document.pages
+    )
+
+    if (
+        document.ready_for_semantic_analysis
+        and not candidate_pages
+    ):
+        return "TEXT_READY"
+
+    if pdf_document_should_attempt_automatic_vision(
+        document,
+        max_vision_pages=max_vision_pages,
+    ):
+        return "AUTO_VISION"
+
+    if (
+        document.ready_for_semantic_analysis
+        and has_usable_text
+    ):
+        return "PARTIAL_TEXT"
+
+    if (
+        candidate_pages
+        and pdf_document_can_attempt_vision(
+            document
+        )
+    ):
+        return "VISION_DEFERRED"
+
+    return "BLOCKED"
+
+
+def prepare_pdf_document_with_deep_vision(
+    document: IngestedPdfDocument,
+    *,
+    vision_page_extractor: VisionPageExtractor,
+    max_vision_pages: int = DEFAULT_MAX_DEEP_VISION_PAGES,
+) -> IngestedPdfDocument:
+    """
+    Explicitly process all currently missing-text pages with Vision,
+    up to the Deep Vision safety budget.
+
+    This function is intended for an explicit user action rather than
+    automatic analysis. The caller should cache the resulting physical
+    source by content SHA-256 and reuse it across semantic role views.
+    """
+
+    if not pdf_document_can_attempt_vision(
+        document
+    ):
+        return document
+
+    candidate_pages = (
+        pdf_document_vision_candidate_page_numbers(
+            document
+        )
+    )
+
+    if not candidate_pages:
+        return document
+
+    if len(candidate_pages) > max_vision_pages:
+        return ingest_pdf_document(
+            role=document.role,
+            filename=document.filename,
+            content=document.raw_bytes,
+            max_vision_pages=max_vision_pages,
+            vision_page_numbers=candidate_pages,
+            vision_page_extractor=vision_page_extractor,
+        )
+
+    return ingest_pdf_document(
+        role=document.role,
+        filename=document.filename,
+        content=document.raw_bytes,
+        max_vision_pages=max_vision_pages,
+        vision_page_numbers=candidate_pages,
+        vision_page_extractor=vision_page_extractor,
+    )
+
+
+def prepare_pdf_document_views_with_vision(
+    documents,
+    *,
+    vision_page_extractor: VisionPageExtractor,
+    deep_vision: bool = False,
+    max_deep_vision_pages: int = DEFAULT_MAX_DEEP_VISION_PAGES,
+) -> tuple[IngestedPdfDocument, ...]:
+    """
+    Prepare each physical PDF at most once, then rebind the prepared
+    source into its original semantic role views.
+
+    This prevents Requirement / Verification / Feasible role views of
+    the same immutable source from triggering duplicate Vision calls.
+    """
+
+    prepared_by_sha: dict[str, IngestedPdfDocument] = {}
+
+    for document in documents:
+        source_sha256 = document.content_sha256
+
+        if source_sha256 in prepared_by_sha:
+            continue
+
+        if deep_vision:
+            prepared = prepare_pdf_document_with_deep_vision(
+                document,
+                vision_page_extractor=vision_page_extractor,
+                max_vision_pages=max_deep_vision_pages,
+            )
+        elif pdf_document_should_attempt_automatic_vision(
+            document
+        ):
+            prepared = (
+                prepare_pdf_document_for_semantic_analysis(
+                    document,
+                    vision_page_extractor=vision_page_extractor,
+                )
+            )
+        else:
+            prepared = document
+
+        prepared_by_sha[source_sha256] = prepared
+
+    return tuple(
+        rebind_pdf_document_role(
+            prepared_by_sha[document.content_sha256],
+            document.role,
+        )
+        for document in documents
+    )
 
 
 def prepare_pdf_document_for_semantic_analysis(

@@ -1,4 +1,5 @@
 import hashlib
+from time import perf_counter
 import re
 from copy import deepcopy
 
@@ -12,26 +13,58 @@ from src.application.semantic_ingress import (
     build_semantic_review_signature,
     confirm_ambiguous_source_location,
 )
+from src.application.pdf_vision_restore import (
+    restore_pdf_document_from_vision_cache,
+)
+
 from src.application.pdf_ingress import (
+    DEFAULT_MAX_VISION_PAGES,
+    DEFAULT_MAX_DEEP_VISION_PAGES,
     build_pdf_page_preview,
     build_semantic_document,
     ingest_pdf_document,
     pdf_document_can_attempt_vision,
     pdf_document_requires_vision,
+    pdf_document_should_attempt_automatic_vision,
+    pdf_document_source_coverage_status,
+    pdf_document_vision_candidate_page_numbers,
     prepare_pdf_document_for_semantic_analysis,
+    prepare_pdf_document_with_deep_vision,
+    prepare_pdf_document_views_with_vision,
+    rebind_pdf_document_role,
     validate_pdf_document_set,
 )
 from src.ai.pdf_page_vision import (
     extract_pdf_page_with_vision,
 )
+from src.ai.pdf_vision_cache import (
+    is_pdf_page_vision_cached,
+    load_cached_pdf_page_transcription,
+    warm_pdf_page_vision_cache,
+)
+from src.application.feasible_evidence_set import (
+    analyze_feasible_evidence_documents,
+)
 from src.application.feasible_evidence_ingress import (
     analyze_feasible_evidence_pdf,
-    build_feasible_evidence_prefills,
     build_feasible_evidence_trace,
     confirm_ambiguous_feasible_source_location,
 )
 from src.application.evidence_trace import (
     build_source_reference,
+)
+from src.application.example_source_sets import (
+    FORD_REAL_WORLD_SOURCE_SET,
+    load_example_source_set,
+)
+from src.application.role_grounding import (
+    apply_grounded_semantic_approvals,
+    build_engineer_reviewed_semantic_adapter,
+    build_grounded_feasible_evidence_prefills,
+    evaluate_role_completeness,
+    ground_feasible_candidates,
+    ground_semantic_candidates,
+    semantic_candidate_grounding_eligibility,
 )
 from src.application.result_presentation import (
     build_derived_value_view,
@@ -60,38 +93,23 @@ from src.core.models import (
     EngineeringCase,
 )
 
+from src.ui.ui_shell import (
+    inject_ui_shell_css,
+    render_hero_banner,
+    render_stage_strip,
+    render_section_header,
+    render_soft_note,
+)
+
 
 st.set_page_config(
-    page_title=(
-        "공학 검증 스트레스 테스트"
-    ),
+    page_title="공학 검증 스트레스 테스트",
     layout="wide",
 )
 
-st.title(
-    "공학 검증 스트레스 테스트"
-)
-
-st.caption(
-    "Engineering Verification Stress Test · "
-    "Document Evidence → Engineering Semantics "
-    "→ Formal Counterexample"
-)
-
-st.markdown(
-    "**① 문서 입력**  →  "
-    "**② 공학 데이터 추출**  →  "
-    "**③ 검증 모델 및 검토**  →  "
-    "**④ 검증 결과**"
-)
-
-st.caption(
-    "PDF 무결성 · Source Provenance · Semantic Review · "
-    "Variable Mapping · Feasible Domain · "
-    "Scope / Assurance · Formal Human Review · "
-    "Deterministic Solver"
-)
-
+inject_ui_shell_css()
+render_hero_banner()
+render_stage_strip()
 
 # =========================================================
 # HELPERS
@@ -103,6 +121,368 @@ def safe_key(
     return hashlib.sha256(
         value.encode("utf-8")
     ).hexdigest()[:10]
+
+
+def grounding_display_status(
+    grounding,
+) -> str:
+    if grounding is None:
+        return "NOT ESTABLISHED"
+
+    if bool(
+        getattr(
+            grounding,
+            "supported",
+            False,
+        )
+    ):
+        return "SUPPORTED"
+
+    if (
+        getattr(
+            grounding,
+            "status",
+            None,
+        )
+        == "REJECTED"
+    ):
+        return "REJECTED"
+
+    return "REVIEW REQUIRED"
+
+
+def render_review_focus(
+    stage: str,
+    focus: str,
+) -> None:
+    st.markdown(
+        f"""
+        <div style="
+            margin: 0.75rem 0 1.25rem 0;
+            padding: 0.95rem 1.1rem;
+            border-left: 4px solid #2F6FED;
+            border-radius: 0.55rem;
+            background: rgba(47, 111, 237, 0.08);
+        ">
+            <div style="
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: #2F6FED;
+                letter-spacing: 0.02em;
+                margin-bottom: 0.2rem;
+            ">
+                현재 단계
+            </div>
+            <div style="
+                font-size: 1.02rem;
+                font-weight: 700;
+                margin-bottom: 0.7rem;
+            ">
+                {stage}
+            </div>
+            <div style="
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: #2F6FED;
+                margin-bottom: 0.15rem;
+            ">
+                검토 포인트
+            </div>
+            <div style="
+                font-size: 0.92rem;
+                line-height: 1.55;
+            ">
+                {focus}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def format_grounding_filter_label(
+    status: str,
+) -> str:
+    labels = {
+        "전체": "전체 후보",
+        "SUPPORTED": (
+            "SUPPORTED · 원문이 해당 역할을 뒷받침"
+        ),
+        "REVIEW REQUIRED": (
+            "REVIEW REQUIRED · 사람의 추가 검토 필요"
+        ),
+        "REJECTED": (
+            "REJECTED · 현재 역할의 근거로 부적합"
+        ),
+        "NOT ESTABLISHED": (
+            "NOT ESTABLISHED · 아직 판정되지 않음"
+        ),
+    }
+
+    return labels.get(
+        status,
+        status,
+    )
+
+
+def normalize_connection_unit(
+    value,
+) -> str:
+    return " ".join(
+        str(value or "").strip().upper().split()
+    )
+
+
+def candidate_connection_state(
+    candidate,
+    anchors,
+) -> str:
+    """
+    Display-only deterministic connection guidance.
+
+    DIRECT:
+        variable group and engineering unit exactly align.
+
+    REVIEW:
+        unit aligns, but variable wording/group differs.
+        Engineer mapping is required.
+
+    MISMATCH:
+        engineering unit does not align.
+
+    NO_CONTEXT:
+        prerequisite evidence has not been selected yet.
+
+    Numeric min/max values are intentionally NOT used.
+    """
+    anchors = [
+        anchor
+        for anchor in anchors
+        if anchor is not None
+    ]
+
+    if not anchors:
+        return "NO_CONTEXT"
+
+    extraction = candidate.extraction or {}
+
+    candidate_variable = str(
+        extraction.get("variable") or ""
+    ).strip()
+
+    candidate_unit = normalize_connection_unit(
+        extraction.get("unit")
+    )
+
+    anchor_variables = [
+        str(
+            (anchor.extraction or {}).get(
+                "variable"
+            )
+            or ""
+        ).strip()
+        for anchor in anchors
+    ]
+
+    anchor_units = [
+        normalize_connection_unit(
+            (anchor.extraction or {}).get(
+                "unit"
+            )
+        )
+        for anchor in anchors
+    ]
+
+    if (
+        not candidate_unit
+        or any(not unit for unit in anchor_units)
+    ):
+        return "REVIEW"
+
+    if any(
+        candidate_unit != unit
+        for unit in anchor_units
+    ):
+        return "MISMATCH"
+
+    candidate_group = (
+        normalize_source_variable_group_key(
+            candidate_variable
+        )
+        if candidate_variable
+        else ""
+    )
+
+    anchor_groups = [
+        normalize_source_variable_group_key(
+            variable
+        )
+        if variable
+        else ""
+        for variable in anchor_variables
+    ]
+
+    if (
+        candidate_group
+        and all(anchor_groups)
+        and all(
+            candidate_group == group
+            for group in anchor_groups
+        )
+    ):
+        return "DIRECT"
+
+    return "REVIEW"
+
+
+def connection_state_label(
+    state: str,
+) -> str:
+    return {
+        "DIRECT": "직접 연결 가능",
+        "REVIEW": "Mapping 검토 필요",
+        "MISMATCH": "현재 조합과 바로 연결되지 않음",
+        "NO_CONTEXT": "선행 근거 선택 필요",
+    }.get(
+        state,
+        state,
+    )
+
+
+def connection_state_priority(
+    state: str,
+) -> int:
+    return {
+        "DIRECT": 0,
+        "REVIEW": 1,
+        "MISMATCH": 2,
+        "NO_CONTEXT": 3,
+    }.get(
+        state,
+        9,
+    )
+
+
+def format_candidate_review_summary(
+    extraction,
+) -> str:
+    """
+    Compact, display-only summary of an extracted candidate.
+    No semantic judgment is performed here.
+    """
+
+    extraction = extraction or {}
+
+    variable = (
+        extraction.get("variable")
+        or "Unnamed variable"
+    )
+
+    variable = " ".join(
+        str(variable).split()
+    )
+
+    constraint_type = str(
+        extraction.get("type")
+        or ""
+    )
+
+    minimum = extraction.get("min")
+    maximum = extraction.get("max")
+    unit = extraction.get("unit")
+
+    unit_text = (
+        " " + str(unit)
+        if unit
+        else ""
+    )
+
+    if (
+        constraint_type == "range"
+        and minimum is not None
+        and maximum is not None
+    ):
+        value_text = (
+            f"{minimum}–{maximum}{unit_text}"
+        )
+
+    elif (
+        constraint_type == "lower_bound"
+        and minimum is not None
+    ):
+        value_text = (
+            f"≥ {minimum}{unit_text}"
+        )
+
+    elif (
+        constraint_type == "upper_bound"
+        and maximum is not None
+    ):
+        value_text = (
+            f"≤ {maximum}{unit_text}"
+        )
+
+    elif (
+        minimum is not None
+        and maximum is not None
+    ):
+        value_text = (
+            f"{minimum}–{maximum}{unit_text}"
+        )
+
+    elif minimum is not None:
+        value_text = (
+            f"{minimum}{unit_text}"
+        )
+
+    elif maximum is not None:
+        value_text = (
+            f"{maximum}{unit_text}"
+        )
+
+    elif constraint_type:
+        value_text = constraint_type
+
+    else:
+        value_text = "Structured candidate"
+
+    return (
+        variable
+        + " · "
+        + value_text
+    )
+
+
+def build_candidate_review_title(
+    *,
+    proposed_role,
+    extraction,
+    grounding,
+    source_name,
+    approved=False,
+) -> str:
+    """
+    Display-only candidate title.
+
+    The grounding result and Engineer Approval state are
+    shown, not inferred or changed.
+    """
+
+    grounding_status = grounding_display_status(
+        grounding
+    )
+
+    title = (
+        f"[{grounding_status}] "
+        f"{proposed_role} · "
+        f"{format_candidate_review_summary(extraction)} · "
+        f"{source_name}"
+    )
+
+    if approved:
+        title += " · SELECTED ✓"
+
+    return title
 
 
 def valid_variable_id(
@@ -212,6 +592,9 @@ for key, default in {
     "analysis_signature": None,
     "feasible_analysis": None,
     "feasible_approved_candidate_ids": [],
+    "semantic_approved_candidate_ids": [],
+    "semantic_role_grounding": {},
+    "feasible_role_grounding": {},
     "mapped_analysis": None,
     "base_case": None,
     "verification_result": None,
@@ -220,6 +603,7 @@ for key, default in {
     "prepared_feasible_review_signature": None,
     "prepared_feasible_evidence_traces": [],
     "vision_prepared_pdf_documents": {},
+    "vision_prepared_physical_sources": {},
     "vision_prepared_pdf_signature": None,
     "formal_model_revision": 0,
 }.items():
@@ -227,347 +611,1587 @@ for key, default in {
         st.session_state[key] = default
 
 
+def build_pdf_source_set_signature(
+    pdf_documents,
+):
+    source_hashes = sorted({
+        document.content_sha256
+        for document in pdf_documents
+    })
+
+    if not source_hashes:
+        return None
+
+    if len(source_hashes) == 1:
+        return source_hashes[0]
+
+    return hashlib.sha256(
+        "\n".join(
+            source_hashes
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 # =========================================================
 # STEP 1 — DOCUMENTS
 # =========================================================
 
-st.header(
-    "1 · 문서 입력 (Documents)"
+render_section_header(
+    "STAGE 01",
+    "분석 경로 선택",
+    "검증된 실제 사례를 확인하거나, 범용 엔진으로 새로운 Engineering PDF를 분석합니다.",
+)
+render_soft_note(
+    "Ford 경로는 사전에 검증된 real-world reference case를 설명합니다. "
+    "Analyze Your Document 경로는 특정 사례의 정답을 사용하지 않고 "
+    "업로드한 PDF에서 Requirement, Verification, Observed Evidence를 탐색합니다."
 )
 
-input_mode = st.radio(
-    "문서 입력 방식",
-    [
-        "PDF Upload",
-        "Text Input",
-    ],
-    horizontal=True,
-    format_func=lambda mode: {
-        "PDF Upload": "PDF 업로드",
-        "Text Input": "텍스트 입력",
-    }[mode],
-)
+input_mode = "PDF Upload"
 
 documents = []
 pdf_documents = []
 source_pdfs = {}
 feasible_pdf_document = None
+feasible_pdf_documents = []
 document_input_ready = False
 pdf_input_signature = None
 
-left, right = st.columns(2)
+st.markdown("### 시작 방법")
 
-if input_mode == "PDF Upload":
-    with left:
-        st.subheader(
-            "설계 요구조건 문서 (Requirement PDF)"
-        )
-        requirement_upload = st.file_uploader(
-            "Requirement PDF 업로드",
-            type=["pdf"],
-            key="requirement_pdf_upload",
-        )
+entry_left, entry_right = st.columns(2)
 
-    with right:
-        st.subheader(
-            "검사 기준 문서 (Verification PDF)"
+with entry_left:
+    with st.container(border=True):
+        st.markdown(
+            "#### 직접 분석해보기"
         )
-        verification_upload = st.file_uploader(
-            "Verification PDF 업로드",
-            type=["pdf"],
-            key="verification_pdf_upload",
+        st.markdown(
+            """
+            <div style="min-height: 3.4rem;">
+                새로운 Engineering PDF를 업로드해
+                범용 Evidence Discovery 및 Formal Verification
+                파이프라인을 실행합니다.
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-    st.divider()
+        if st.button(
+            "내 문서 사용 (Use My Document)",
+            use_container_width=True,
+            type=(
+                "primary"
+                if st.session_state.get(
+                    "engineering_source_entry_mode",
+                    "upload",
+                )
+                == "upload"
+                else "secondary"
+            ),
+            key="select_upload_entry",
+        ):
+            st.session_state[
+                "engineering_source_entry_mode"
+            ] = "upload"
+            st.rerun()
 
+with entry_right:
+    with st.container(border=True):
+        st.markdown(
+            "#### 실제 사례로 이해하기"
+        )
+        st.markdown(
+            """
+            <div style="min-height: 3.4rem;">
+                검증이 완료된 Ford 실제 사례에서
+                Requirement → Verification → Observed Evidence →
+                Deterministic Verification 흐름을 확인합니다.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if st.button(
+            "Ford 검증 사례 보기",
+            use_container_width=True,
+            type=(
+                "primary"
+                if st.session_state.get(
+                    "engineering_source_entry_mode",
+                    "upload",
+                )
+                == "ford"
+                else "secondary"
+            ),
+            key="select_ford_entry",
+        ):
+            st.session_state[
+                "engineering_source_entry_mode"
+            ] = "ford"
+            st.rerun()
+
+
+ford_mode = (
+    st.session_state.get(
+        "engineering_source_entry_mode",
+        "upload",
+    )
+    == "ford"
+)
+
+if ford_mode:
     st.subheader(
-        "운영 근거 문서 (Operating Evidence PDF)"
+        FORD_REAL_WORLD_SOURCE_SET.title
     )
 
     st.caption(
-        "관측·시험·생산·운영 데이터에서 현실 가능 범위 "
-        "(Feasible Domain) 후보를 추출합니다. "
-        "Engineer Approval 전에는 Formal Model에 적용되지 않습니다."
+        FORD_REAL_WORLD_SOURCE_SET.description
     )
 
-    feasible_upload = st.file_uploader(
-        "Operating Evidence PDF 업로드",
-        type=["pdf"],
-        key="feasible_pdf_upload",
-    )
-
-    feasible_status = st.container()
-
-    uploads = [
-        (
-            "requirement",
-            requirement_upload,
-        ),
-        (
-            "verification",
-            verification_upload,
-        ),
-        (
-            "feasible",
-            feasible_upload,
-        ),
-    ]
-
-    for role, upload in uploads:
-        if upload is None:
-            continue
-
-        pdf_document = ingest_pdf_document(
-            role=role,
-            filename=upload.name,
-            content=upload.getvalue(),
+    try:
+        ford_sources = load_example_source_set(
+            FORD_REAL_WORLD_SOURCE_SET
         )
 
-        cache_key = (
-            role
-            + ":"
-            + pdf_document.content_sha256
+        st.success(
+            "Validated Reference Case 준비 완료 · "
+            + str(len(ford_sources))
+            + "개 실제 공개 원본 PDF"
         )
 
-        cached_pdf_document = (
-            st.session_state[
-                "vision_prepared_pdf_documents"
-            ].get(cache_key)
+        st.caption(
+            "Ford는 사례 설명용 reference case입니다. "
+            "아래에서는 검증된 Evidence Chain과 deterministic result를 "
+            "먼저 보여주고, 원본 파일 identity는 필요할 때 확인할 수 있습니다."
         )
 
-        if cached_pdf_document is not None:
-            pdf_document = cached_pdf_document
-
-        pdf_documents.append(pdf_document)
-
-        if role == "requirement":
-            container = left
-        elif role == "verification":
-            container = right
-        else:
-            container = feasible_status
-
-        with container:
-            if pdf_document.ready_for_semantic_analysis:
-                st.success(
-                    f"{pdf_document.filename} · "
-                    f"{pdf_document.total_pages} page(s)"
+        with st.expander(
+            "원본 문서 Provenance · "
+            + str(len(ford_sources))
+            + " PDFs",
+            expanded=False,
+        ):
+            for index, source in enumerate(
+                ford_sources,
+                start=1,
+            ):
+                st.markdown(
+                    f"**{index:02d} · {source.filename}**"
                 )
-                with st.expander(
-                    "문서 세부정보 (Advanced)"
-                ):
-                    st.caption(
-                        "SHA-256 · "
-                        + pdf_document.content_sha256
-                    )
-                    st.caption(
-                        "Role · " + pdf_document.role
-                    )
-                    st.caption(
-                        "Pages · "
-                        + str(pdf_document.total_pages)
-                    )
+                st.caption(
+                    "SHA-256 · "
+                    + source.sha256
+                )
+
+        for index, source in enumerate(
+            ford_sources,
+            start=1,
+        ):
+            physical_document = ingest_pdf_document(
+                role="requirement",
+                filename=source.filename,
+                content=source.content,
+            )
+
+            cached_physical_document = (
+                st.session_state[
+                    "vision_prepared_physical_sources"
+                ].get(
+                    physical_document.content_sha256
+                )
+            )
+
+            if cached_physical_document is not None:
+                physical_document = (
+                    cached_physical_document
+                )
             else:
-                if (
-                    pdf_document_requires_vision(
-                        pdf_document
+                physical_document = (
+                    restore_pdf_document_from_vision_cache(
+                        physical_document
                     )
-                    and pdf_document_can_attempt_vision(
-                        pdf_document
+                )
+
+            for role in (
+                "requirement",
+                "verification",
+                "feasible",
+            ):
+                pdf_documents.append(
+                    rebind_pdf_document_role(
+                        physical_document,
+                        role,
                     )
+                )
+
+        registered_pdf_documents = tuple(
+            pdf_documents
+        )
+
+        coverage_representatives = {}
+
+        for document in registered_pdf_documents:
+            coverage_representatives.setdefault(
+                document.content_sha256,
+                document,
+            )
+
+        coverage_status_by_sha = {
+            source_sha256: (
+                pdf_document_source_coverage_status(
+                    document
+                )
+            )
+            for source_sha256, document
+            in coverage_representatives.items()
+        }
+
+        usable_source_hashes = {
+            source_sha256
+            for source_sha256, status
+            in coverage_status_by_sha.items()
+            if status in {
+                "TEXT_READY",
+                "AUTO_VISION",
+                "PARTIAL_TEXT",
+            }
+        }
+
+        vision_deferred_hashes = {
+            source_sha256
+            for source_sha256, status
+            in coverage_status_by_sha.items()
+            if status == "VISION_DEFERRED"
+        }
+
+        full_source_coverage = all(
+            status == "TEXT_READY"
+            for status
+            in coverage_status_by_sha.values()
+        )
+
+        deep_vision_source_hashes = {
+            source_sha256
+            for source_sha256, document
+            in coverage_representatives.items()
+            if (
+                pdf_document_can_attempt_vision(
+                    document
+                )
+                and pdf_document_vision_candidate_page_numbers(
+                    document
+                )
+            )
+        }
+
+        deep_vision_source_count = len(
+            deep_vision_source_hashes
+        )
+
+        full_analysis_supported = all(
+            (
+                not pdf_document_vision_candidate_page_numbers(
+                    document
+                )
+            )
+            or (
+                pdf_document_can_attempt_vision(
+                    document
+                )
+                and len(
+                    pdf_document_vision_candidate_page_numbers(
+                        document
+                    )
+                )
+                <= DEFAULT_MAX_DEEP_VISION_PAGES
+            )
+            for document
+            in coverage_representatives.values()
+        )
+
+        st.markdown("#### 문서 처리 범위")
+
+        coverage_columns = st.columns(
+            [1.0, 3.0]
+        )
+
+        coverage_columns[0].metric(
+            "등록 문서",
+            len(coverage_representatives),
+        )
+
+        with coverage_columns[1]:
+            capability_text = (
+                "✓ 전체 문서 분석 지원"
+                if full_analysis_supported
+                else "△ 일부 문서 분석 제한"
+            )
+
+            st.markdown(
+                f"""
+                <div class="ev-assurance-line">
+                    <span>✓ 즉시 분석 {len(usable_source_hashes)}개</span>
+                    <span>✓ Deep Vision 확장 {deep_vision_source_count}개</span>
+                    <span>{capability_text}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        coverage_rows = []
+
+        for source in ford_sources:
+            document = coverage_representatives.get(
+                source.sha256
+            )
+
+            if document is None:
+                coverage_rows.append(
+                    (
+                        source.filename,
+                        "처리 불가",
+                        "문서 등록 상태를 확인할 수 없습니다.",
+                    )
+                )
+                continue
+
+            status = coverage_status_by_sha[
+                source.sha256
+            ]
+
+            candidate_pages = (
+                pdf_document_vision_candidate_page_numbers(
+                    document
+                )
+            )
+
+            text_page_count = (
+                document.total_pages
+                - len(candidate_pages)
+            )
+
+            if status == "TEXT_READY":
+                state_label = "분석 가능"
+                detail = (
+                    "텍스트 기반 전체 페이지 준비 완료"
+                )
+
+            elif status == "AUTO_VISION":
+                state_label = "자동 Vision"
+                detail = (
+                    f"텍스트가 없는 {len(candidate_pages)}개 "
+                    "페이지를 자동 Vision으로 보완합니다."
+                )
+
+            elif status == "PARTIAL_TEXT":
+                state_label = "기본 분석"
+                detail = (
+                    "기본 분석 준비 · "
+                    "이미지 기반 페이지는 Deep Vision으로 "
+                    "전체 분석 가능"
+                )
+
+            elif status == "VISION_DEFERRED":
+                state_label = "Deep Vision"
+                detail = (
+                    "이미지 기반 문서 · "
+                    "Deep Vision으로 전체 페이지 분석 가능"
+                )
+
+            else:
+                state_label = "처리 불가"
+                detail = (
+                    "현재 지원하지 않는 PDF 처리 상태입니다."
+                )
+
+            coverage_rows.append(
+                (
+                    source.filename,
+                    state_label,
+                    detail,
+                )
+            )
+
+        coverage_html = [
+            '<div class="ev-coverage-list">'
+        ]
+
+        for filename, state_label, detail in coverage_rows:
+            coverage_html.append(
+                '<div class="ev-coverage-row">'
+                f'<div class="ev-coverage-file">{filename}</div>'
+                '<div>'
+                f'<span class="ev-coverage-state">{state_label}</span>'
+                '</div>'
+                f'<div class="ev-coverage-detail">{detail}</div>'
+                '</div>'
+            )
+
+        coverage_html.append("</div>")
+
+        st.markdown(
+            "".join(coverage_html),
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            '<div class="ev-analysis-ready">'
+            '<span class="ev-analysis-ready-dot"></span>'
+            f'분석 준비 완료 · {len(usable_source_hashes)}개 즉시 분석 · '
+            f'{deep_vision_source_count}개 Deep Vision 지원'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        remaining_vision_pages = sum(
+            len(
+                pdf_document_vision_candidate_page_numbers(
+                    document
+                )
+            )
+            for document
+            in coverage_representatives.values()
+            if pdf_document_can_attempt_vision(
+                document
+            )
+        )
+
+        remaining_vision_sources = sum(
+            1
+            for document
+            in coverage_representatives.values()
+            if (
+                pdf_document_can_attempt_vision(
+                    document
+                )
+                and pdf_document_vision_candidate_page_numbers(
+                    document
+                )
+            )
+        )
+
+        if remaining_vision_pages > 0:
+            with st.container(border=True):
+                st.markdown(
+                    "##### 전체 페이지 분석 · Deep Vision"
+                )
+
+                st.caption(
+                    f"{remaining_vision_sources}개 문서에 "
+                    "추가 이미지 분석이 가능합니다. "
+                    "동일한 원본 PDF는 한 번만 처리하고, "
+                    "결과를 Requirement · Verification · "
+                    "Observed Evidence 분석에 재사용합니다."
+                )
+
+                if st.button(
+                    "전체 페이지 분석 시작",
+                    key="run_deep_vision_source_set",
+                    type="secondary",
+                    use_container_width=True,
                 ):
-                    st.info(
-                        f"{pdf_document.filename} · "
-                        "Scanned/image-only page(s) detected. "
-                        "Vision analysis will run when "
-                        "Analyze Documents is selected."
-                    )
-                else:
-                    st.error(
-                        "PDF ingestion blocked · "
-                        + pdf_document.status
-                    )
+                    try:
+                        from src.ai.constraint_parser import (
+                            client as vision_client,
+                        )
 
-            for issue in pdf_document.issues:
-                if issue.severity == "ERROR":
-                    st.error(
-                        f"{issue.code} · {issue.message}"
-                    )
-                else:
-                    st.warning(
-                        f"{issue.code} · {issue.message}"
-                    )
+                        unique_physical_documents = {
+                            document.content_sha256: document
+                            for document
+                            in registered_pdf_documents
+                        }
 
-    if pdf_documents:
+                        def cached_deep_vision_page_extractor(
+                            pdf_bytes,
+                            page_number,
+                        ):
+                            transcription = (
+                                load_cached_pdf_page_transcription(
+                                    pdf_bytes,
+                                    page_number=page_number,
+                                )
+                            )
+
+                            if transcription is None:
+                                raise RuntimeError(
+                                    "Vision page cache is missing "
+                                    f"for page {page_number}."
+                                )
+
+                            return transcription
+
+                        with st.spinner(
+                            f"Deep Vision으로 "
+                            f"{remaining_vision_pages}페이지를 "
+                            "분석하고 있습니다. "
+                            "문서 크기에 따라 몇 분 정도 "
+                            "걸릴 수 있습니다..."
+                        ):
+                            for physical_document in (
+                                unique_physical_documents.values()
+                            ):
+                                candidate_pages = (
+                                    pdf_document_vision_candidate_page_numbers(
+                                        physical_document
+                                    )
+                                )
+
+                                if not candidate_pages:
+                                    continue
+
+                                warm_pdf_page_vision_cache(
+                                    physical_document.raw_bytes,
+                                    page_numbers=candidate_pages,
+                                    client=vision_client,
+                                    max_workers=4,
+                                )
+
+                            prepared_views = (
+                                prepare_pdf_document_views_with_vision(
+                                    registered_pdf_documents,
+                                    vision_page_extractor=(
+                                        cached_deep_vision_page_extractor
+                                    ),
+                                    deep_vision=True,
+                                )
+                            )
+
+                        prepared_by_sha = {}
+
+                        for document in prepared_views:
+                            prepared_by_sha.setdefault(
+                                document.content_sha256,
+                                document,
+                            )
+
+                        physical_cache = dict(
+                            st.session_state[
+                                "vision_prepared_physical_sources"
+                            ]
+                        )
+
+                        prepared_source_count = 0
+
+                        for source_sha256, prepared in (
+                            prepared_by_sha.items()
+                        ):
+                            original = (
+                                coverage_representatives.get(
+                                    source_sha256
+                                )
+                            )
+
+                            if original is None:
+                                continue
+
+                            before_count = len(
+                                pdf_document_vision_candidate_page_numbers(
+                                    original
+                                )
+                            )
+
+                            after_count = len(
+                                pdf_document_vision_candidate_page_numbers(
+                                    prepared
+                                )
+                            )
+
+                            if after_count < before_count:
+                                physical_cache[
+                                    source_sha256
+                                ] = prepared
+                                prepared_source_count += 1
+
+                        if prepared_source_count == 0:
+                            raise RuntimeError(
+                                "Deep Vision이 추가 페이지를 "
+                                "처리하지 못했습니다."
+                            )
+
+                        st.session_state[
+                            "vision_prepared_physical_sources"
+                        ] = physical_cache
+
+                        # Source text changed, so every downstream result
+                        # derived from the previous source state is stale.
+                        reset_values = {
+                            "analysis": None,
+                            "analysis_signature": None,
+                            "feasible_analysis": None,
+                            "feasible_approved_candidate_ids": [],
+    "semantic_approved_candidate_ids": [],
+                            "semantic_role_grounding": {},
+                            "feasible_role_grounding": {},
+                            "mapped_analysis": None,
+                            "base_case": None,
+                            "verification_result": None,
+                            "verification_review_state": None,
+                            "prepared_semantic_review_signature": None,
+                            "prepared_feasible_review_signature": None,
+                            "prepared_feasible_evidence_traces": [],
+                        }
+
+                        for key, value in reset_values.items():
+                            st.session_state[key] = value
+
+                        st.rerun()
+
+                    except Exception as exc:
+                        st.error(
+                            "Deep Vision 처리에 실패했습니다. "
+                            "기존 분석 가능 데이터는 유지됩니다. "
+                            f"상세: {exc}"
+                        )
+
+        pdf_documents = [
+            document
+            for document in registered_pdf_documents
+            if document.content_sha256
+            in usable_source_hashes
+        ]
+
         pdf_input_signature = hashlib.sha256(
             "\n".join(
-                (
-                    document.role
-                    + ":"
-                    + document.content_sha256
+                sorted(
+                    source.sha256
+                    for source in ford_sources
                 )
-                for document in pdf_documents
             ).encode("utf-8")
         ).hexdigest()
 
-    document_set_validation = (
-        validate_pdf_document_set(
-            pdf_documents
+        document_set_validation = (
+            validate_pdf_document_set(
+                pdf_documents
+            )
         )
-    )
 
-    for issue in document_set_validation.issues:
-        if issue.code == "PDF_DOCUMENT_NOT_READY":
-            continue
+        blocking_document_set_issue = any(
+            issue.severity == "ERROR"
+            and issue.code
+            != "PDF_DOCUMENT_NOT_READY"
+            for issue
+            in document_set_validation.issues
+        )
 
-        if issue.severity == "ERROR":
-            st.error(
-                f"{issue.code} · {issue.message}"
+        documents_supported_for_analysis = all(
+            (
+                document.ready_for_semantic_analysis
+                or pdf_document_should_attempt_automatic_vision(
+                    document
+                )
             )
+            for document in pdf_documents
+        )
+
+        document_input_ready = (
+            bool(pdf_documents)
+            and not blocking_document_set_issue
+            and documents_supported_for_analysis
+        )
+
+        pdf_documents_fully_prepared = (
+            document_input_ready
+            and all(
+                document.ready_for_semantic_analysis
+                and not
+                pdf_document_should_attempt_automatic_vision(
+                    document
+                )
+                for document in pdf_documents
+            )
+        )
+
+        if pdf_documents_fully_prepared:
+            documents = [
+                build_semantic_document(
+                    document
+                )
+                for document in pdf_documents
+                if document.role in {
+                    "requirement",
+                    "verification",
+                }
+            ]
+
+            feasible_pdf_documents = [
+                document
+                for document in pdf_documents
+                if document.role == "feasible"
+            ]
+
+            feasible_pdf_document = (
+                feasible_pdf_documents[0]
+                if len(
+                    feasible_pdf_documents
+                )
+                == 1
+                else None
+            )
+
+            source_pdfs = {
+                (
+                    document.role,
+                    document.content_sha256,
+                ): document
+                for document in pdf_documents
+            }
+
+
+        elif document_input_ready:
+            st.info(
+                "Source set registered · Vision recovery "
+                "will run when Evidence Discovery starts."
+            )
+
         else:
-            st.warning(
-                f"{issue.code} · {issue.message}"
+            st.error(
+                "The Ford source set could not be prepared "
+                "for Evidence Discovery."
             )
 
-    pdf_roles = {
-        document.role
-        for document in pdf_documents
-    }
+    except Exception as exc:
+        document_input_ready = False
 
-    required_pdf_roles = {
-        "requirement",
-        "verification",
-    }
+        st.error(
+            "Ford source set could not be loaded: "
+            + str(exc)
+        )
 
-    blocking_document_set_issue = any(
-        issue.severity == "ERROR"
-        and issue.code != "PDF_DOCUMENT_NOT_READY"
-        for issue in document_set_validation.issues
+
+if ford_mode:
+    st.divider()
+
+    render_review_focus(
+        "Validated Execution Walkthrough",
+        (
+            "검증된 Ford real-world case를 이용해 "
+            "EVST가 source document에서 deterministic verification까지 "
+            "어떤 단계를 거치는지 전체 실행 구조를 보여줍니다."
+        ),
     )
 
-    documents_supported_for_analysis = all(
-        (
-            document.ready_for_semantic_analysis
-            or (
+    st.markdown("## Ford Nano Intake Valve Hardness")
+
+    st.caption(
+        "이 화면은 CLOSED real-world reference case의 검증된 execution trace를 "
+        "설명합니다. 사용자가 후보를 다시 고르는 화면은 아니지만, "
+        "제품이 실제로 수행하는 Source → AI Semantic Bridge → Human Review → "
+        "Formalization → Solver 구조를 그대로 보여줍니다."
+    )
+
+    st.markdown("### 1. EVST Processing Pipeline")
+
+    pipeline_row_1 = st.columns(3)
+
+    with pipeline_row_1[0]:
+        with st.container(border=True):
+            st.markdown("**01 · Source Intake**")
+            st.metric("Public engineering records", "4 PDFs")
+            st.caption(
+                "실제 공개 Ford engineering source를 "
+                "immutable source set으로 등록합니다."
+            )
+
+    with pipeline_row_1[1]:
+        with st.container(border=True):
+            st.markdown("**02 · Text / Vision Recovery**")
+            st.write("PDF text + scanned-page recovery")
+            st.caption(
+                "텍스트가 없는 스캔 페이지는 Vision transcription을 통해 "
+                "semantic analysis 가능한 source text로 복구합니다."
+            )
+
+    with pipeline_row_1[2]:
+        with st.container(border=True):
+            st.markdown("**03 · AI Evidence Discovery**")
+            st.write(
+                "Requirement / Verification / Observed Evidence"
+            )
+            st.caption(
+                "AI는 source에서 engineering evidence candidate를 "
+                "구조화하는 Semantic Bridge 역할만 수행합니다."
+            )
+
+    pipeline_row_2 = st.columns(3)
+
+    with pipeline_row_2[0]:
+        with st.container(border=True):
+            st.markdown("**04 · Grounding + Engineer Review**")
+            st.write("Role evidence + source provenance")
+            st.caption(
+                "후보의 역할 적합성, 원문 위치, 의미를 검토하고 "
+                "Engineer Approval 전에는 Formal Model에 반영하지 않습니다."
+            )
+
+    with pipeline_row_2[1]:
+        with st.container(border=True):
+            st.markdown("**05 · Formalization**")
+            st.write("R / V / F → canonical variable")
+            st.caption(
+                "검토된 evidence만 deterministic constraint로 변환하고 "
+                "unsupported semantics는 차단합니다."
+            )
+
+    with pipeline_row_2[2]:
+        with st.container(border=True):
+            st.markdown("**06 · Deterministic Verification**")
+            st.write("Validator + Solver")
+            st.caption(
+                "최종 Verification Escape 판정은 AI가 아니라 "
+                "deterministic validation과 solver가 수행합니다."
+            )
+
+    st.info(
+        "AI는 문서를 읽고 engineering evidence를 구조화하지만, "
+        "최종 판정과 witness 생성은 deterministic verification layer가 담당합니다."
+    )
+
+    st.markdown("### 2. Validated Engineering Evidence Chain")
+
+    st.caption(
+        "아래 R / V / F는 검증된 Ford reference case에서 Formal Model로 "
+        "연결된 evidence chain입니다. 각 카드에서 실제 공개 원본 PDF의 "
+        "근거 페이지를 직접 확인할 수 있습니다."
+    )
+
+    def render_ford_reference_page(
+        *,
+        filename,
+        role,
+        page_number,
+        support_text,
+        preview_key,
+    ):
+        source = next(
+            (
+                item
+                for item in ford_sources
+                if item.filename == filename
+            ),
+            None,
+        )
+
+        if source is None:
+            st.error(
+                "Reference source not found · "
+                + filename
+            )
+            return
+
+        pdf_document = source_pdfs.get(
+            (
+                role,
+                source.sha256,
+            )
+        )
+
+        if pdf_document is None:
+            pdf_document = ingest_pdf_document(
+                role=role,
+                filename=source.filename,
+                content=source.content,
+            )
+
+        st.caption(
+            filename
+            + " · Page "
+            + str(page_number)
+        )
+
+        st.write(support_text)
+
+        try:
+            st.pdf(
+                build_pdf_page_preview(
+                    pdf_document,
+                    page_number,
+                ),
+                height=430,
+                key=preview_key,
+            )
+        except Exception as exc:
+            st.error(
+                "PDF page preview failed: "
+                + str(exc)
+            )
+
+        page_record = pdf_document.page(
+            page_number
+        )
+
+        if (
+            page_record is not None
+            and str(
+                getattr(
+                    page_record,
+                    "text",
+                    "",
+                )
+                or ""
+            ).strip()
+        ):
+            with st.expander(
+                "추출된 페이지 텍스트",
+                expanded=False,
+            ):
+                st.write(
+                    page_record.text
+                )
+
+        with st.expander(
+            "Source identity",
+            expanded=False,
+        ):
+            st.caption(
+                "SHA-256 · "
+                + source.sha256
+            )
+
+
+    evidence_r, evidence_v, evidence_f = st.columns(3)
+
+    with evidence_r:
+        with st.container(border=True):
+            st.markdown("#### Requirement · R")
+
+            st.markdown(
+                "**Engineering variable**"
+            )
+            st.write(
+                "Intake-valve tip hardness"
+            )
+
+            st.markdown(
+                "**Extracted constraint**"
+            )
+            st.metric(
+                "Requirement",
+                "50–57 HRC",
+            )
+
+            st.markdown(
+                "**Role status**"
+            )
+            st.success(
+                "VALIDATED · Engineering Requirement"
+            )
+
+            st.caption(
+                "Source-linked evidence · Engineer-reviewed"
+            )
+
+            with st.expander(
+                "실제 원문 근거 확인",
+                expanded=False,
+            ):
+                render_ford_reference_page(
+                    filename=(
+                        "INRD-EA23002-13504P1.pdf"
+                    ),
+                    role="requirement",
+                    page_number=6,
+                    support_text=(
+                        "이 페이지는 JT4E-6507-AB의 "
+                        "tip-hardness specification이 "
+                        "기존 50 MIN에서 2020년 10월 "
+                        "50–57 HRC로 변경된 engineering "
+                        "requirement chronology를 뒷받침합니다."
+                    ),
+                    preview_key="ford_reference_r_page_6",
+                )
+
+                st.markdown(
+                    "**Corroborating drawing evidence**"
+                )
+
+                render_ford_reference_page(
+                    filename=(
+                        "INRD-EA23002-13508P1.pdf"
+                    ),
+                    role="requirement",
+                    page_number=4,
+                    support_text=(
+                        "Ford Central Laboratory report는 "
+                        "해당 hardened region의 drawing "
+                        "specification 50–57 HRC를 함께 기록합니다."
+                    ),
+                    preview_key="ford_reference_r_page_4",
+                )
+
+    with evidence_v:
+        with st.container(border=True):
+            st.markdown("#### Verification · V")
+
+            st.markdown(
+                "**Engineering variable**"
+            )
+            st.write(
+                "Tip hardness acceptance criterion"
+            )
+
+            st.markdown(
+                "**Extracted constraint**"
+            )
+            st.metric(
+                "Historical criterion",
+                "≥ 50 HRC",
+            )
+
+            st.markdown(
+                "**Role status**"
+            )
+            st.success(
+                "VALIDATED · Historical Verification"
+            )
+
+            st.caption(
+                "Source-linked evidence · Engineer-reviewed"
+            )
+
+            with st.expander(
+                "실제 원문 근거 확인",
+                expanded=False,
+            ):
+                render_ford_reference_page(
+                    filename=(
+                        "INRL-EA23002-13503.pdf"
+                    ),
+                    role="verification",
+                    page_number=2,
+                    support_text=(
+                        "Historical SCCAF는 Tip Hardness "
+                        "50 min HRC와 Rockwell hardness "
+                        "inspection / sampling control을 기록합니다."
+                    ),
+                    preview_key="ford_reference_v_page_2",
+                )
+
+                st.markdown(
+                    "**Verification-control chronology**"
+                )
+
+                render_ford_reference_page(
+                    filename=(
+                        "INRL-EA23002-13503.pdf"
+                    ),
+                    role="verification",
+                    page_number=5,
+                    support_text=(
+                        "Ford 기록에 따르면 SCCAF에는 "
+                        "2021-09-07까지 valve tip hardness의 "
+                        "upper tolerance limit가 상세히 "
+                        "반영되지 않았습니다."
+                    ),
+                    preview_key="ford_reference_v_page_5",
+                )
+
+    with evidence_f:
+        with st.container(border=True):
+            st.markdown(
+                "#### Observed Evidence · F"
+            )
+
+            st.markdown(
+                "**Engineering variable**"
+            )
+            st.write(
+                "Measured intake-valve tip hardness"
+            )
+
+            st.markdown(
+                "**Observed evidence envelope**"
+            )
+            st.metric(
+                "Observed evidence",
+                "58–60 HRC",
+            )
+
+            st.markdown(
+                "**Role status**"
+            )
+            st.success(
+                "VALIDATED · Observed Evidence"
+            )
+
+            st.caption(
+                "Field-failure hardware evidence · "
+                "not the full manufacturing domain"
+            )
+
+            with st.expander(
+                "실제 원문 근거 확인",
+                expanded=False,
+            ):
+                render_ford_reference_page(
+                    filename=(
+                        "INRD-EA23002-13508P1.pdf"
+                    ),
+                    role="feasible",
+                    page_number=4,
+                    support_text=(
+                        "Ford Central Laboratory report의 "
+                        "Intake Valve 10 측정값에는 "
+                        "58, 59, 60 HRC가 포함되며 "
+                        "57 HRC upper specification을 "
+                        "초과한 값이 표시되어 있습니다."
+                    ),
+                    preview_key="ford_reference_f_page_4",
+                )
+
+                st.markdown(
+                    "**Independent field-failure corroboration**"
+                )
+
+                render_ford_reference_page(
+                    filename=(
+                        "INRD-EA23002-13506.pdf"
+                    ),
+                    role="feasible",
+                    page_number=1,
+                    support_text=(
+                        "별도의 Eaton 8D record에서도 "
+                        "keeper-groove region의 field-failure "
+                        "valves에서 58–60 HRC 수준의 hardness가 "
+                        "보고되었습니다."
+                    ),
+                    preview_key="ford_reference_f_page_1",
+                )
+
+    st.info(
+        "Evidence chain의 값은 화면에 임의로 입력한 숫자가 아니라 "
+        "위 실제 source pages와 연결된 frozen reference evidence입니다. "
+        "Ford 화면은 이 검증된 provenance를 설명하고, "
+        "Generic Product Path에서는 새로운 PDF에 동일한 "
+        "evidence-discovery pipeline을 실행합니다."
+    )
+
+    st.markdown("### 3. Formalization")
+
+    formal_left, formal_right = st.columns([1.4, 1.0])
+
+    with formal_left:
+        st.markdown("**Canonical engineering variable**")
+        st.code(
+            "H = intake-valve tip hardness [HRC]",
+            language="text",
+        )
+
+        st.markdown("**Deterministic constraints**")
+        st.code(
+            """R(H) := 50 <= H <= 57
+V(H) := H >= 50
+F(H) := 58 <= H <= 60""",
+            language="text",
+        )
+
+    with formal_right:
+        st.markdown("**Verification Escape query**")
+        st.code(
+            """exists H:
+    F(H)
+AND V(H)
+AND NOT R(H)""",
+            language="text",
+        )
+
+        st.caption(
+            "목표는 '검증은 통과하지만 실제 engineering requirement는 "
+            "위반하는 feasible / observed state가 존재하는가?'입니다."
+        )
+
+    st.markdown("### 4. Deterministic Verification")
+
+    result_left, result_right = st.columns([1.0, 2.0])
+
+    with result_left:
+        with st.container(border=True):
+            st.markdown("**Solver result**")
+            st.success("SOLVED")
+            st.metric(
+                "Witness",
+                "H = 60 HRC",
+            )
+
+    with result_right:
+        st.table(
+            [
+                {
+                    "Deterministic check": "Observed evidence · F(60)",
+                    "Result": "PASS",
+                    "Meaning": "60 HRC is inside the validated observed evidence envelope",
+                },
+                {
+                    "Deterministic check": "Historical verification · V(60)",
+                    "Result": "PASS",
+                    "Meaning": "60 HRC satisfies the historical lower-bound criterion",
+                },
+                {
+                    "Deterministic check": "Engineering requirement · R(60)",
+                    "Result": "FAIL",
+                    "Meaning": "60 HRC exceeds the 57 HRC engineering upper bound",
+                },
+            ]
+        )
+
+    st.success(
+        "Verification Escape FOUND ✓ · "
+        "H = 60 HRC는 F와 V를 만족하지만 R을 만족하지 않습니다."
+    )
+
+    st.markdown("### 5. Decision Responsibility")
+
+    responsibility_ai, responsibility_core = st.columns(2)
+
+    with responsibility_ai:
+        with st.container(border=True):
+            st.markdown("#### AI · Semantic Bridge")
+            st.write("✓ Engineering evidence candidate discovery")
+            st.write("✓ 문맥 기반 의미 구조화")
+            st.write("✓ Source evidence 연결 지원")
+            st.write("✕ 최종 Verification Escape 판정")
+            st.write("✕ Solver witness 임의 결정")
+
+    with responsibility_core:
+        with st.container(border=True):
+            st.markdown("#### Deterministic Core")
+            st.write("✓ 승인된 constraint 구조 검증")
+            st.write("✓ R / V / F Formal Model 구성")
+            st.write("✓ Solver query 실행")
+            st.write("✓ Witness 검증")
+            st.write("✓ Verification Escape 최종 판정")
+
+    st.caption(
+        "따라서 Ford 사례의 핵심은 단순히 세 숫자를 비교하는 것이 아니라, "
+        "분산된 engineering documents에서 근거를 구조화하고 검토한 뒤 "
+        "deterministic formal verification까지 연결하는 전체 pipeline입니다."
+    )
+
+    st.divider()
+
+    st.markdown("### 6. Generic Product Path")
+
+    st.write(
+        "Ford는 검증된 reference walkthrough입니다. "
+        "실제 제품 기능에서는 새로운 Engineering PDF를 업로드하여 "
+        "동일한 Evidence Discovery → Grounding → Engineer Review → "
+        "Formalization → Deterministic Verification 구조를 실행합니다."
+    )
+
+    st.info(
+        "새 문서에서 충분한 R / V / F 근거가 성립하지 않으면 "
+        "시스템은 Verification Escape를 억지로 생성하지 않고 "
+        "Formal Verification을 BLOCK합니다."
+    )
+
+    if st.button(
+        "다른 Engineering PDF 분석하기",
+        type="primary",
+        use_container_width=True,
+        key="ford_to_generic_analysis",
+    ):
+        st.session_state[
+            "engineering_source_entry_mode"
+        ] = "upload"
+
+        reset_keys = (
+            "analysis",
+            "analysis_signature",
+            "feasible_analysis",
+            "semantic_role_grounding",
+            "feasible_role_grounding",
+            "semantic_approved_candidate_ids",
+            "feasible_approved_candidate_ids",
+            "mapped_analysis",
+            "base_case",
+            "verification_result",
+            "verification_review_state",
+            "engineer_variable_mapping_confirmed",
+            "engineer_feasible_group_override",
+        )
+
+        for key in reset_keys:
+            st.session_state.pop(key, None)
+
+        st.rerun()
+
+    st.stop()
+
+
+if not ford_mode:
+    st.subheader("Analyze Your Document")
+
+    st.caption(
+        "Upload one engineering PDF. The same immutable source is "
+        "automatically examined through Requirement, Verification, "
+        "and Observed Evidence lenses."
+    )
+
+    uploaded_source = st.file_uploader(
+        "Engineering PDF",
+        type=["pdf"],
+        accept_multiple_files=False,
+        key="engineering_single_source_upload",
+    )
+
+    if uploaded_source is not None:
+        raw_bytes = uploaded_source.getvalue()
+
+        source_hash = hashlib.sha256(
+            raw_bytes
+        ).hexdigest()
+
+        with st.container(border=True):
+            st.markdown(
+                "#### Registered Engineering Source"
+            )
+
+            st.write(uploaded_source.name)
+
+            st.caption(
+                "Source identity · SHA-256 "
+                + source_hash
+            )
+
+            st.markdown(
+                "**Automatic Evidence Discovery**"
+            )
+
+            st.caption(
+                "The source is routed through three independent "
+                "analysis lenses. A lens result is only a proposed "
+                "engineering role; it is not treated as role truth "
+                "until Role Grounding and Engineer Review are complete."
+            )
+
+            lens_columns = st.columns(3)
+
+            with lens_columns[0]:
+                st.info(
+                    "Requirement Lens\n\n"
+                    "Searches for normative engineering "
+                    "requirements."
+                )
+
+            with lens_columns[1]:
+                st.info(
+                    "Verification Lens\n\n"
+                    "Searches for inspection, test, or "
+                    "acceptance criteria."
+                )
+
+            with lens_columns[2]:
+                st.info(
+                    "Observed Evidence Lens\n\n"
+                    "Searches for actual measured, tested, "
+                    "manufactured, or observed states."
+                )
+
+            physical_document = ingest_pdf_document(
+                role="requirement",
+                filename=uploaded_source.name,
+                content=raw_bytes,
+            )
+
+            cached_physical_document = (
+                st.session_state[
+                    "vision_prepared_physical_sources"
+                ].get(
+                    physical_document.content_sha256
+                )
+            )
+
+            if cached_physical_document is not None:
+                physical_document = (
+                    cached_physical_document
+                )
+            else:
+                physical_document = (
+                    restore_pdf_document_from_vision_cache(
+                        physical_document
+                    )
+                )
+
+            for role in (
+                "requirement",
+                "verification",
+                "feasible",
+            ):
+                pdf_documents.append(
+                    rebind_pdf_document_role(
+                        physical_document,
+                        role,
+                    )
+                )
+
+            representative = pdf_documents[0]
+
+            st.caption(
+                "Pages · "
+                + str(representative.total_pages)
+            )
+
+            if all(
+                document.ready_for_semantic_analysis
+                for document in pdf_documents
+            ):
+                st.success(
+                    "Integrity checked · Source identity recorded · "
+                    "Ready for Automatic Evidence Discovery"
+                )
+
+            elif any(
                 pdf_document_requires_vision(
                     document
                 )
                 and pdf_document_can_attempt_vision(
                     document
                 )
+                for document in pdf_documents
+            ):
+                st.info(
+                    "Scanned/image-only page(s) detected. "
+                    "Vision recovery will run automatically "
+                    "when analysis starts."
+                )
+
+            else:
+                st.error(
+                    "This PDF cannot currently be prepared "
+                    "for engineering evidence analysis."
+                )
+
+            shown_issues = set()
+
+            for document in pdf_documents:
+                for issue in document.issues:
+                    issue_key = (
+                        issue.code,
+                        issue.message,
+                        issue.severity,
+                    )
+
+                    if issue_key in shown_issues:
+                        continue
+
+                    shown_issues.add(issue_key)
+
+                    if issue.severity == "ERROR":
+                        st.error(
+                            f"{issue.code} · "
+                            f"{issue.message}"
+                        )
+                    else:
+                        st.warning(
+                            f"{issue.code} · "
+                            f"{issue.message}"
+                        )
+
+        pdf_input_signature = source_hash
+
+        document_set_validation = (
+            validate_pdf_document_set(
+                pdf_documents
             )
         )
-        for document in pdf_documents
-    )
 
-    document_input_ready = (
-        required_pdf_roles.issubset(
-            pdf_roles
+        for issue in document_set_validation.issues:
+            if issue.code in {
+                "PDF_DOCUMENT_NOT_READY",
+                "PDF_REUSED_ACROSS_ROLES",
+            }:
+                continue
+
+            if issue.severity == "ERROR":
+                st.error(
+                    f"{issue.code} · {issue.message}"
+                )
+            else:
+                st.warning(
+                    f"{issue.code} · {issue.message}"
+                )
+
+        blocking_document_set_issue = any(
+            issue.severity == "ERROR"
+            and issue.code
+            != "PDF_DOCUMENT_NOT_READY"
+            for issue
+            in document_set_validation.issues
         )
-        and not blocking_document_set_issue
-        and documents_supported_for_analysis
-    )
 
-    pdf_documents_fully_prepared = (
-        document_input_ready
-        and all(
-            document.ready_for_semantic_analysis
-            and not pdf_document_requires_vision(
-                document
-            )
-            for document in pdf_documents
-        )
-    )
-
-    if pdf_documents_fully_prepared:
-        documents = [
-            build_semantic_document(document)
-            for document in pdf_documents
-            if document.role in {
-                "requirement",
-                "verification",
-            }
-        ]
-
-        feasible_pdf_document = next(
+        documents_supported_for_analysis = all(
             (
+                document.ready_for_semantic_analysis
+                or pdf_document_should_attempt_automatic_vision(
+                    document
+                )
+            )
+            for document in pdf_documents
+        )
+
+        document_input_ready = (
+            bool(pdf_documents)
+            and not blocking_document_set_issue
+            and documents_supported_for_analysis
+        )
+
+        pdf_documents_fully_prepared = (
+            document_input_ready
+            and all(
+                document.ready_for_semantic_analysis
+                and not
+                pdf_document_should_attempt_automatic_vision(
+                    document
+                )
+                for document in pdf_documents
+            )
+        )
+
+        if pdf_documents_fully_prepared:
+            documents = [
+                build_semantic_document(
+                    document
+                )
+                for document in pdf_documents
+                if document.role in {
+                    "requirement",
+                    "verification",
+                }
+            ]
+
+            feasible_pdf_documents = [
                 document
                 for document in pdf_documents
                 if document.role == "feasible"
-            ),
-            None,
-        )
+            ]
 
-        source_pdfs = {
-            (
-                document.role,
-                document.content_sha256,
-            ): document
-            for document in pdf_documents
-        }
-
-    elif not required_pdf_roles.issubset(
-        pdf_roles
-    ):
-        st.info(
-            "Requirement PDF와 Verification PDF를 "
-            "모두 업로드해 주세요. "
-            "Operating Evidence PDF는 선택사항입니다."
-        )
-
-    elif document_input_ready:
-        st.info(
-            "Scanned/image-only PDF page(s) are ready "
-            "for Vision analysis. "
-            "Select Analyze Documents to continue."
-        )
-
-else:
-    with left:
-        st.subheader(
-            "Engineering Requirement"
-        )
-        requirement_text = st.text_area(
-            "Requirement document text",
-            height=220,
-            placeholder=(
-                "R1. Pressure P shall be between "
-                "2.0 MPa and 3.0 MPa inclusive."
-            ),
-        )
-
-    with right:
-        st.subheader(
-            "Verification / Inspection"
-        )
-        verification_text = st.text_area(
-            "Verification document text",
-            height=220,
-            placeholder=(
-                "V1. The inspection accepts the system "
-                "when pressure P is at least 2.0 MPa."
-            ),
-        )
-
-    if requirement_text.strip():
-        documents.append(
-            SemanticDocument(
-                role="requirement",
-                source_name="requirement_input",
-                text=requirement_text,
+            feasible_pdf_document = (
+                feasible_pdf_documents[0]
+                if len(feasible_pdf_documents) == 1
+                else None
             )
-        )
 
-    if verification_text.strip():
-        documents.append(
-            SemanticDocument(
-                role="verification",
-                source_name="verification_input",
-                text=verification_text,
+            source_pdfs = {
+                (
+                    document.role,
+                    document.content_sha256,
+                ): document
+                for document in pdf_documents
+            }
+
+        elif document_input_ready:
+            st.info(
+                "Source registered. Select Analyze Document "
+                "to complete Vision recovery and Automatic "
+                "Evidence Discovery."
             )
+
+    else:
+        st.info(
+            "Upload one original engineering PDF to begin "
+            "Automatic Evidence Discovery."
         )
 
-    document_input_ready = bool(documents)
 
 
 semantic_documents_signature = (
@@ -579,15 +2203,17 @@ semantic_documents_signature = (
 )
 
 feasible_document_sha256 = (
-    feasible_pdf_document.content_sha256
-    if feasible_pdf_document is not None
-    else None
+    build_pdf_source_set_signature(
+        feasible_pdf_documents
+    )
 )
 
 current_signature = (
     hashlib.sha256(
         (
-            (semantic_documents_signature or "")
+            (pdf_input_signature or "")
+            + "|"
+            + (semantic_documents_signature or "")
             + "|"
             + (feasible_document_sha256 or "")
         ).encode("utf-8")
@@ -601,12 +2227,12 @@ current_signature = (
 
 
 if st.button(
-    "문서 분석 시작 (Analyze Documents)",
+    "자동 Evidence Discovery 시작 (Analyze Document)",
     type="primary",
 ):
     if not document_input_ready:
         st.warning(
-            "분석할 Requirement와 Verification 문서를 확인해 주세요."
+            "분석할 Engineering Source를 등록해 주세요."
         )
 
     else:
@@ -627,7 +2253,7 @@ if st.button(
                     )
 
                 if any(
-                    pdf_document_requires_vision(
+                    pdf_document_should_attempt_automatic_vision(
                         document
                     )
                     for document in pdf_documents
@@ -636,22 +2262,14 @@ if st.button(
                         "스캔 페이지를 Vision AI로 "
                         "분석하고 있습니다..."
                     ):
-                        prepared_pdf_documents = [
-                            (
-                                prepare_pdf_document_for_semantic_analysis(
-                                    document,
-                                    vision_page_extractor=(
-                                        vision_page_extractor
-                                    ),
-                                )
-                                if pdf_document_requires_vision(
-                                    document
-                                )
-                                else document
+                        prepared_pdf_documents = list(
+                            prepare_pdf_document_views_with_vision(
+                                pdf_documents,
+                                vision_page_extractor=(
+                                    vision_page_extractor
+                                ),
                             )
-                            for document in pdf_documents
-                        ]
-
+                        )
                     if not all(
                         document.ready_for_semantic_analysis
                         for document
@@ -686,6 +2304,34 @@ if st.button(
                         "vision_prepared_pdf_documents"
                     ] = cached_documents
 
+                    physical_cache = dict(
+                        st.session_state[
+                            "vision_prepared_physical_sources"
+                        ]
+                    )
+
+                    for document in pdf_documents:
+                        current_cached = physical_cache.get(
+                            document.content_sha256
+                        )
+
+                        if (
+                            current_cached is None
+                            or len(
+                                document.vision_processed_page_numbers
+                            )
+                            > len(
+                                current_cached.vision_processed_page_numbers
+                            )
+                        ):
+                            physical_cache[
+                                document.content_sha256
+                            ] = document
+
+                    st.session_state[
+                        "vision_prepared_physical_sources"
+                    ] = physical_cache
+
                     st.session_state[
                         "vision_prepared_pdf_signature"
                     ] = pdf_input_signature
@@ -713,15 +2359,16 @@ if st.button(
                     }
                 ]
 
-                feasible_pdf_document = next(
-                    (
-                        document
-                        for document
-                        in pdf_documents
-                        if document.role
-                        == "feasible"
-                    ),
-                    None,
+                feasible_pdf_documents = [
+                    document
+                    for document in pdf_documents
+                    if document.role == "feasible"
+                ]
+
+                feasible_pdf_document = (
+                    feasible_pdf_documents[0]
+                    if len(feasible_pdf_documents) == 1
+                    else None
                 )
 
                 source_pdfs = {
@@ -740,17 +2387,17 @@ if st.button(
                 )
 
                 feasible_document_sha256 = (
-                    feasible_pdf_document
-                    .content_sha256
-                    if feasible_pdf_document
-                    is not None
-                    else None
-                )
+    build_pdf_source_set_signature(
+        feasible_pdf_documents
+    )
+)
 
                 current_signature = (
                     hashlib.sha256(
                         (
-                            semantic_documents_signature
+                            (pdf_input_signature or "")
+                            + "|"
+                            + semantic_documents_signature
                             + "|"
                             + (
                                 feasible_document_sha256
@@ -763,39 +2410,235 @@ if st.button(
             with st.spinner(
                 "문서에서 공학 의미 (Engineering Semantics)를 추출하고 있습니다..."
             ):
-                analysis = (
-                    analyze_semantic_documents(
-                        documents
+                discovery_started = perf_counter()
+
+                from concurrent.futures import (
+                    ThreadPoolExecutor,
+                )
+
+                def run_semantic_extraction():
+                    started = perf_counter()
+
+                    result = analyze_semantic_documents(
+                        documents,
+                        max_workers=2,
+                    )
+
+                    return (
+                        result,
+                        perf_counter() - started,
+                    )
+
+                def run_feasible_extraction():
+                    started = perf_counter()
+
+                    result = (
+                        analyze_feasible_evidence_documents(
+                            feasible_pdf_documents,
+                            max_workers=2,
+                        )
+                        if feasible_pdf_documents
+                        else None
+                    )
+
+                    return (
+                        result,
+                        perf_counter() - started,
+                    )
+
+                with ThreadPoolExecutor(
+                    max_workers=2
+                ) as executor:
+                    semantic_future = executor.submit(
+                        run_semantic_extraction
+                    )
+
+                    feasible_future = executor.submit(
+                        run_feasible_extraction
+                    )
+
+                    (
+                        analysis,
+                        semantic_elapsed,
+                    ) = semantic_future.result()
+
+                    (
+                        feasible_analysis,
+                        feasible_elapsed,
+                    ) = feasible_future.result()
+
+                print(
+                    "[DISCOVERY] R/V extraction: "
+                    f"{semantic_elapsed:.2f}s | "
+                    f"candidates={len(analysis.candidates)}",
+                    flush=True,
+                )
+
+                print(
+                    "[DISCOVERY] F extraction: "
+                    f"{feasible_elapsed:.2f}s | "
+                    "candidates="
+                    + str(
+                        len(feasible_analysis.candidates)
+                        if feasible_analysis is not None
+                        else 0
+                    ),
+                    flush=True,
+                )
+
+                strict_adapter_accepted_count = sum(
+                    1
+                    for candidate
+                    in analysis.candidates
+                    if candidate.adapter_accepted
+                )
+
+                source_location_ready_count = sum(
+                    1
+                    for candidate
+                    in analysis.candidates
+                    if candidate.source_location_ready
+                )
+
+                grounding_eligibility_by_candidate = {
+                    candidate.candidate_id:
+                    semantic_candidate_grounding_eligibility(
+                        candidate
+                    )
+                    for candidate
+                    in analysis.candidates
+                }
+
+                grounding_eligible_count = sum(
+                    1
+                    for eligible, _
+                    in grounding_eligibility_by_candidate.values()
+                    if eligible
+                )
+
+                grounding_source_ready_count = sum(
+                    1
+                    for candidate
+                    in analysis.candidates
+                    if (
+                        grounding_eligibility_by_candidate[
+                            candidate.candidate_id
+                        ][0]
+                        and candidate.source_location_ready
                     )
                 )
 
-                feasible_analysis = (
-                    analyze_feasible_evidence_pdf(
-                        feasible_pdf_document
-                    )
-                    if feasible_pdf_document
-                    is not None
-                    else None
+                precheck_blocked_count = (
+                    len(analysis.candidates)
+                    - grounding_eligible_count
                 )
 
-            for state_key in list(
-                st.session_state.keys()
-            ):
-                if state_key.startswith((
-                    "semantic_approval_",
-                    "source_location_page_",
-                    "source_location_confirm_",
-                    "feasible_approval_",
-                    "feasible_source_location_page_",
-                    "feasible_source_location_confirm_",
-                )):
-                    del st.session_state[
-                        state_key
-                    ]
+                def run_semantic_grounding():
+                    started = perf_counter()
 
-            st.session_state[
-                "formal_model_revision"
-            ] += 1
+                    result = ground_semantic_candidates(
+                        analysis,
+                        max_workers=2,
+                    )
+
+                    return (
+                        result,
+                        perf_counter() - started,
+                    )
+
+                def run_feasible_grounding():
+                    started = perf_counter()
+
+                    result = (
+                        ground_feasible_candidates(
+                            feasible_analysis,
+                            max_workers=2,
+                        )
+                        if feasible_analysis is not None
+                        else {}
+                    )
+
+                    return (
+                        result,
+                        perf_counter() - started,
+                    )
+
+                with ThreadPoolExecutor(
+                    max_workers=2
+                ) as executor:
+                    semantic_grounding_future = (
+                        executor.submit(
+                            run_semantic_grounding
+                        )
+                    )
+
+                    feasible_grounding_future = (
+                        executor.submit(
+                            run_feasible_grounding
+                        )
+                    )
+
+                    (
+                        semantic_role_grounding,
+                        semantic_grounding_elapsed,
+                    ) = (
+                        semantic_grounding_future.result()
+                    )
+
+                    (
+                        feasible_role_grounding,
+                        feasible_grounding_elapsed,
+                    ) = (
+                        feasible_grounding_future.result()
+                    )
+
+                discovery_total = (
+                    perf_counter()
+                    - discovery_started
+                )
+
+                print(
+                    "[DISCOVERY] R/V grounding: "
+                    f"{semantic_grounding_elapsed:.2f}s | "
+                    f"candidates="
+                    f"{len(semantic_role_grounding)} | "
+                    "strict-adapter-accepted="
+                    f"{strict_adapter_accepted_count} | "
+                    "source-ready="
+                    f"{source_location_ready_count} | "
+                    "grounding-eligible="
+                    f"{grounding_eligible_count} | "
+                    "grounding+source-ready="
+                    f"{grounding_source_ready_count} | "
+                    "precheck-blocked="
+                    f"{precheck_blocked_count}",
+                    flush=True,
+                )
+
+                print(
+                    "[DISCOVERY] F grounding: "
+                    f"{feasible_grounding_elapsed:.2f}s | "
+                    f"candidates="
+                    f"{len(feasible_role_grounding)}",
+                    flush=True,
+                )
+
+                print(
+                    "[DISCOVERY] TOTAL: "
+                    f"{discovery_total:.2f}s",
+                    flush=True,
+                )
+
+                st.caption(
+                    "분석 시간 · "
+                    f"R/V 추출 {semantic_elapsed:.1f}s · "
+                    f"F 추출 {feasible_elapsed:.1f}s · "
+                    "R/V Grounding "
+                    f"{semantic_grounding_elapsed:.1f}s · "
+                    "F Grounding "
+                    f"{feasible_grounding_elapsed:.1f}s · "
+                    f"총 {discovery_total:.1f}s"
+                )
 
             st.session_state[
                 "verification_result"
@@ -820,6 +2663,18 @@ if st.button(
             st.session_state[
                 "feasible_analysis"
             ] = feasible_analysis
+
+            st.session_state[
+                "semantic_role_grounding"
+            ] = semantic_role_grounding
+
+            st.session_state[
+                "feasible_role_grounding"
+            ] = feasible_role_grounding
+
+            st.session_state[
+                "semantic_approved_candidate_ids"
+            ] = []
 
             st.session_state[
                 "feasible_approved_candidate_ids"
@@ -855,6 +2710,14 @@ feasible_analysis = st.session_state[
     "feasible_analysis"
 ]
 
+semantic_role_grounding = st.session_state[
+    "semantic_role_grounding"
+]
+
+feasible_role_grounding = st.session_state[
+    "feasible_role_grounding"
+]
+
 
 # =========================================================
 # STEP 2 — SEMANTIC REVIEW
@@ -863,8 +2726,24 @@ feasible_analysis = st.session_state[
 if analysis is not None:
     st.divider()
 
-    st.header(
-        "2 · 공학 데이터 추출 (Engineering Extraction)"
+    render_section_header(
+        "STAGE 02",
+        "Evidence Discovery",
+        (
+            "Stage 01의 동일한 원본 source를 여러 "
+            "engineering lens로 분석한 Candidate와 "
+            "source provenance를 제시합니다."
+        ),
+    )
+
+    render_soft_note(
+        (
+            "AI는 원본 source에서 engineering evidence "
+            "candidate를 제안하는 Semantic Bridge 역할만 "
+            "수행합니다. Proposed Role은 Role Grounding과 "
+            "Engineer Review를 통과하기 전에는 "
+            "Formal Model에 반영되지 않습니다."
+        )
     )
 
     analysis_is_current = (
@@ -877,200 +2756,1631 @@ if analysis is not None:
     if not analysis_is_current:
         st.warning(
             "입력 문서가 분석 이후 변경되었습니다. "
-            "Candidate를 사용하기 전에 Analyze Documents를 다시 실행해 주세요."
+            "Candidate를 사용하기 전에 "
+            "Analyze Documents를 다시 실행해 주세요."
+        )
+
+    with st.expander(
+        "표시 옵션",
+        expanded=False,
+    ):
+        review_view_mode = st.radio(
+            "후보 표시 방식",
+            (
+                "Compact",
+                "Detailed",
+            ),
+            horizontal=True,
+            format_func=(
+                lambda mode: {
+                    "Compact": "요약 보기",
+                    "Detailed": "전체 펼치기",
+                }[mode]
+            ),
+            key="candidate_review_view_mode",
+        )
+
+        st.caption(
+            "요약 보기에서는 후보 제목을 먼저 확인하고 "
+            "필요한 항목만 펼칩니다."
+        )
+
+    candidate_details_expanded = (
+        review_view_mode == "Detailed"
+    )
+
+    feasible_candidate_count = (
+        len(feasible_analysis.candidates)
+        if feasible_analysis is not None
+        else 0
+    )
+
+    requirement_candidate_count = sum(
+        candidate.role == "requirement"
+        for candidate in analysis.candidates
+    )
+
+    verification_candidate_count = sum(
+        candidate.role == "verification"
+        for candidate in analysis.candidates
+    )
+
+    guided_semantic_selected = set(
+        st.session_state.get(
+            "semantic_approved_candidate_ids",
+            [],
+        )
+    )
+
+    guided_feasible_selected = set(
+        st.session_state.get(
+            "feasible_approved_candidate_ids",
+            [],
+        )
+    )
+
+    guided_requirement_count = sum(
+        candidate.candidate_id
+        in guided_semantic_selected
+        and candidate.role == "requirement"
+        for candidate in analysis.candidates
+    )
+
+    guided_verification_count = sum(
+        candidate.candidate_id
+        in guided_semantic_selected
+        and candidate.role == "verification"
+        for candidate in analysis.candidates
+    )
+
+    guided_feasible_count = (
+        sum(
+            candidate.candidate_id
+            in guided_feasible_selected
+            for candidate
+            in feasible_analysis.candidates
+        )
+        if feasible_analysis is not None
+        else 0
+    )
+
+    guided_requirement_candidate = next(
+        (
+            candidate
+            for candidate in analysis.candidates
+            if (
+                candidate.role == "requirement"
+                and candidate.candidate_id
+                in guided_semantic_selected
+            )
+        ),
+        None,
+    )
+
+    guided_verification_candidate = next(
+        (
+            candidate
+            for candidate in analysis.candidates
+            if (
+                candidate.role == "verification"
+                and candidate.candidate_id
+                in guided_semantic_selected
+            )
+        ),
+        None,
+    )
+
+    guided_feasible_candidate = None
+    if feasible_analysis is not None:
+        guided_feasible_candidate = next(
+            (
+                candidate
+                for candidate
+                in feasible_analysis.candidates
+                if candidate.candidate_id
+                in guided_feasible_selected
+            ),
+            None,
+        )
+
+    st.markdown(
+        "### Evidence Set Builder"
+    )
+
+    st.caption(
+        "Requirement → Verification → Observed Evidence 순서로 "
+        "하나의 검증 근거 세트를 구성합니다. "
+        "현재 단계에 필요한 후보만 기본 화면에 표시합니다."
+    )
+
+    builder_r, builder_v, builder_f = st.columns(3)
+
+    with builder_r:
+        st.markdown(
+            "**① 설계 요구조건 · Requirement**"
+        )
+
+        if guided_requirement_candidate is not None:
+            st.success("선택 완료 ✓")
+
+            st.caption(
+                format_candidate_review_summary(
+                    guided_requirement_candidate.extraction
+                )
+            )
+
+            requirement_change = st.button(
+                "Requirement 변경",
+                key="builder_change_requirement",
+                use_container_width=True,
+            )
+
+            if requirement_change:
+                st.session_state[
+                    "semantic_approved_candidate_ids"
+                ] = []
+
+                st.session_state[
+                    "feasible_approved_candidate_ids"
+                ] = []
+
+                st.session_state[
+                    "engineer_variable_mapping_confirmed"
+                ] = False
+
+                st.session_state[
+                    "engineer_feasible_group_override"
+                ] = {}
+
+                st.session_state[
+                    "mapped_analysis"
+                ] = None
+
+                st.session_state[
+                    "base_case"
+                ] = None
+
+                st.session_state[
+                    "verification_result"
+                ] = None
+
+                st.session_state[
+                    "verification_review_state"
+                ] = None
+
+                st.rerun()
+
+        else:
+            st.info("현재 선택 단계")
+
+            st.caption(
+                "제품이나 시스템이 반드시 만족해야 하는 "
+                "설계·기술 기준을 선택합니다."
+            )
+
+    with builder_v:
+        st.markdown(
+            "**② 검사 / 합격 기준 · Verification**"
+        )
+
+        if guided_verification_candidate is not None:
+            st.success("선택 완료 ✓")
+
+            st.caption(
+                format_candidate_review_summary(
+                    guided_verification_candidate.extraction
+                )
+            )
+
+            verification_change = st.button(
+                "Verification 변경",
+                key="builder_change_verification",
+                use_container_width=True,
+            )
+
+            if verification_change:
+                requirement_ids = [
+                    candidate.candidate_id
+                    for candidate in analysis.candidates
+                    if (
+                        candidate.role == "requirement"
+                        and candidate.candidate_id
+                        in guided_semantic_selected
+                    )
+                ]
+
+                st.session_state[
+                    "semantic_approved_candidate_ids"
+                ] = requirement_ids
+
+                st.session_state[
+                    "feasible_approved_candidate_ids"
+                ] = []
+
+                st.session_state[
+                    "engineer_variable_mapping_confirmed"
+                ] = False
+
+                st.session_state[
+                    "engineer_feasible_group_override"
+                ] = {}
+
+                st.session_state[
+                    "mapped_analysis"
+                ] = None
+
+                st.session_state[
+                    "base_case"
+                ] = None
+
+                st.session_state[
+                    "verification_result"
+                ] = None
+
+                st.session_state[
+                    "verification_review_state"
+                ] = None
+
+                st.rerun()
+
+        elif guided_requirement_candidate is None:
+            st.caption(
+                "Requirement 선택 후 진행"
+            )
+
+        else:
+            st.info("현재 선택 단계")
+
+            st.caption(
+                "선택한 Requirement와 연결되는 "
+                "실제 검사·합격 기준을 검토합니다."
+            )
+
+    with builder_f:
+        st.markdown(
+            "**③ 실제 관측 근거 · Observed Evidence**"
+        )
+
+        if guided_feasible_candidate is not None:
+            st.success("선택 완료 ✓")
+
+            st.caption(
+                format_candidate_review_summary(
+                    guided_feasible_candidate.extraction
+                )
+            )
+
+            feasible_change = st.button(
+                "Observed Evidence 변경",
+                key="builder_change_feasible",
+                use_container_width=True,
+            )
+
+            if feasible_change:
+                st.session_state[
+                    "feasible_approved_candidate_ids"
+                ] = []
+
+                st.session_state[
+                    "engineer_variable_mapping_confirmed"
+                ] = False
+
+                st.session_state[
+                    "engineer_feasible_group_override"
+                ] = {}
+
+                st.session_state[
+                    "mapped_analysis"
+                ] = None
+
+                st.session_state[
+                    "base_case"
+                ] = None
+
+                st.session_state[
+                    "verification_result"
+                ] = None
+
+                st.session_state[
+                    "verification_review_state"
+                ] = None
+
+                st.rerun()
+
+        elif (
+            guided_requirement_candidate is None
+            or guided_verification_candidate is None
+        ):
+            st.caption(
+                "Requirement / Verification 선택 후 진행"
+            )
+
+        else:
+            st.info("현재 선택 단계")
+
+            st.caption(
+                "현재 R / V와 연결되는 실제 측정·시험 "
+                "근거를 검토합니다."
+            )
+
+
+    # -----------------------------------------------------
+    # Sequential wizard focus
+    # -----------------------------------------------------
+
+    if guided_requirement_candidate is None:
+        candidate_category = "Requirement"
+
+        render_review_focus(
+            "① Requirement 선택",
+            (
+                "제품이나 시스템이 반드시 만족해야 하는 "
+                "설계·기술 요구조건 하나를 선택합니다."
+            ),
+        )
+
+    elif guided_verification_candidate is None:
+        candidate_category = "Verification"
+
+        render_review_focus(
+            "② Verification 선택",
+            (
+                "선택한 Requirement와 연결되는 검사·시험의 "
+                "합격 기준을 검토합니다."
+            ),
+        )
+
+    elif guided_feasible_candidate is None:
+        candidate_category = "Observed Evidence"
+
+        render_review_focus(
+            "③ Observed Evidence 선택",
+            (
+                "현재 Requirement / Verification과 연결되는 "
+                "실제 측정·시험 근거를 검토합니다."
+            ),
+        )
+
+    else:
+        candidate_category = None
+
+        render_review_focus(
+            "Evidence Set Compatibility",
+            (
+                "R / V / F 선택이 완료되었습니다. "
+                "아래에서 하나의 Formal Model로 연결 가능한지 "
+                "최종 정합성을 확인합니다."
+            ),
+        )
+
+        st.success(
+            "Evidence Set 선택 완료 ✓ · "
+            "이제 Compatibility 검토로 이동합니다."
+        )
+
+
+    if candidate_category is not None:
+        stage_label = {
+            "Requirement": "Requirement 후보",
+            "Verification": "Verification 후보",
+            "Observed Evidence": "Observed Evidence 후보",
+        }[
+            candidate_category
+        ]
+
+        st.markdown(
+            "#### " + stage_label
+        )
+
+        if candidate_category == "Requirement":
+            st.caption(
+                "역할 근거가 확인된 설계·기술 요구조건 후보를 "
+                "검토합니다."
+            )
+
+        elif candidate_category == "Verification":
+            st.caption(
+                "현재 Requirement와의 연결 상태에 따라 "
+                "후보가 정리됩니다."
+            )
+
+        else:
+            st.caption(
+                "현재 Requirement / Verification과의 연결 상태에 "
+                "따라 후보가 정리됩니다."
+            )
+
+        st.caption(
+            "특정 Min / Max 숫자값을 기준으로 후보를 "
+            "자동 선택하거나 정답 순위를 만들지 않습니다."
         )
 
     # -----------------------------------------------------
     # Feasible Evidence Candidate Review
     # -----------------------------------------------------
 
-    feasible_approved_candidate_ids = []
-
-    if feasible_analysis is not None:
-        st.subheader(
-            "운영 근거 추출 결과 "
-            "(Feasible Evidence Candidates)"
+    feasible_approved_candidate_ids = list(
+        st.session_state.get(
+            "feasible_approved_candidate_ids",
+            [],
         )
+    )
 
-        st.caption(
-            "AI는 후보만 제안합니다. PDF 원문 위치와 의미를 "
-            "확인한 뒤 Engineer Approval이 있어야 다음 단계에서 "
-            "Feasible Domain 입력 후보로 사용할 수 있습니다."
-        )
-
-        feasible_analysis = deepcopy(
-            feasible_analysis
-        )
-
-        if not feasible_analysis.candidates:
-            st.info(
-                "이 Operating Evidence PDF에서 지원 가능한 "
-                "Feasible Domain 후보를 찾지 못했습니다."
+    if candidate_category == "Observed Evidence":
+        if feasible_analysis is not None:
+            st.subheader(
+                "관측 근거 추출 결과 "
+                "(Observed Evidence Candidates)"
             )
 
-        for feasible_index, feasible_candidate in enumerate(
-            feasible_analysis.candidates,
-            start=1,
-        ):
-            extraction = (
-                feasible_candidate.extraction
+            st.caption(
+                "AI는 후보만 제안합니다. PDF 원문 위치와 의미를 "
+                "확인한 뒤 Engineer Approval이 있어야 다음 단계에서 "
+                "Feasible Domain 입력 후보로 사용할 수 있습니다."
             )
 
-            with st.container(
-                border=True
-            ):
-                source_column, data_column = (
-                    st.columns(2)
-                )
+            feasible_analysis = deepcopy(
+                feasible_analysis
+            )
 
-                feasible_preview_page = (
-                    feasible_candidate.source_page
-                )
+            feasible_status_counts = {
+                "SUPPORTED": 0,
+                "REVIEW REQUIRED": 0,
+                "REJECTED": 0,
+                "NOT ESTABLISHED": 0,
+            }
 
-                with source_column:
-                    st.markdown(
-                        "#### 원문 근거 (Source Evidence)"
+            for feasible_candidate in feasible_analysis.candidates:
+                status = grounding_display_status(
+                    feasible_role_grounding.get(
+                        feasible_candidate.candidate_id
                     )
+                )
+                feasible_status_counts[status] += 1
 
-                    st.caption(
-                        feasible_candidate.source_name
-                        + " · Block "
+            st.caption(
+                "후보 현황 · 전체 "
+                f"Total {len(feasible_analysis.candidates)} · "
+                f"SUPPORTED {feasible_status_counts['SUPPORTED']} · "
+                f"REVIEW REQUIRED "
+                f"{feasible_status_counts['REVIEW REQUIRED']} · "
+                f"REJECTED {feasible_status_counts['REJECTED']}"
+            )
+
+            feasible_status_filter = st.selectbox(
+                "후보 보기",
+                (
+                    "SUPPORTED",
+                    "REVIEW REQUIRED",
+                    "REJECTED",
+                    "전체",
+                ),
+                format_func=lambda value: {
+                    "SUPPORTED": "역할 근거 확인됨",
+                    "REVIEW REQUIRED": "추가 확인 필요",
+                    "REJECTED": "현재 역할과 맞지 않음",
+                    "전체": "전체 후보 보기",
+                }[value],
+                key="feasible_grounding_status_filter",
+            )
+
+            st.caption(
+                "표시 필터는 보기만 바꾸며 후보, 근거, "
+                "Role Grounding 판정은 변경하지 않습니다."
+            )
+
+            feasible_search_query = st.text_input(
+                "후보 검색",
+                placeholder=(
+                    "예: hardness, HRC, pressure, source file name"
+                ),
+                key="feasible_candidate_search",
+            )
+
+            visible_feasible_candidates = [
+                candidate
+                for candidate in feasible_analysis.candidates
+                if (
+                    feasible_status_filter == "전체"
+                    or grounding_display_status(
+                        feasible_role_grounding.get(
+                            candidate.candidate_id
+                        )
+                    )
+                    == feasible_status_filter
+                )
+            ]
+
+            normalized_feasible_search = (
+                feasible_search_query
+                .strip()
+                .lower()
+            )
+
+            if normalized_feasible_search:
+                visible_feasible_candidates = [
+                    candidate
+                    for candidate
+                    in visible_feasible_candidates
+                    if normalized_feasible_search
+                    in (
+                        format_candidate_review_summary(
+                            candidate.extraction
+                        )
+                        + " "
                         + str(
-                            feasible_candidate.source_block_id
-                            or "—"
+                            candidate.source_name
+                            or ""
+                        )
+                    ).lower()
+                ]
+
+            feasible_connection_counts = {
+                "DIRECT": 0,
+                "REVIEW": 0,
+                "MISMATCH": 0,
+                "NO_CONTEXT": 0,
+            }
+
+            feasible_connection_anchors = (
+                [
+                    guided_requirement_candidate,
+                    guided_verification_candidate,
+                ]
+                if (
+                    guided_requirement_candidate
+                    is not None
+                    and guided_verification_candidate
+                    is not None
+                )
+                else []
+            )
+
+            for candidate in visible_feasible_candidates:
+                state = candidate_connection_state(
+                    candidate,
+                    feasible_connection_anchors,
+                )
+                feasible_connection_counts[state] += 1
+
+            if feasible_connection_anchors:
+                visible_feasible_candidates.sort(
+                    key=lambda candidate: (
+                        connection_state_priority(
+                            candidate_connection_state(
+                                candidate,
+                                feasible_connection_anchors,
+                            )
+                        ),
+                        format_candidate_review_summary(
+                            candidate.extraction
+                        ).lower(),
+                    )
+                )
+
+                st.caption(
+                    "현재 R / V와의 연결 안내 · "
+                    f"직접 연결 {feasible_connection_counts['DIRECT']} · "
+                    f"Mapping 검토 {feasible_connection_counts['REVIEW']} · "
+                    "바로 연결되지 않음 "
+                    f"{feasible_connection_counts['MISMATCH']}"
+                )
+
+            selected_feasible_count = sum(
+                candidate.candidate_id
+                in feasible_approved_candidate_ids
+                for candidate
+                in feasible_analysis.candidates
+            )
+
+            st.caption(
+                "표시 중 · "
+                f"{len(visible_feasible_candidates)} / "
+                f"{len(feasible_analysis.candidates)}"
+                "  ·  Formal Model 선택 · "
+                f"{selected_feasible_count}"
+            )
+
+            if not feasible_analysis.candidates:
+                st.info(
+                    "업로드한 source에서 지원 가능한 "
+                    "Observed Evidence 후보를 찾지 못했습니다."
+                )
+
+            for feasible_index, feasible_candidate in enumerate(
+                visible_feasible_candidates,
+                start=1,
+            ):
+                extraction = (
+                    feasible_candidate.extraction
+                )
+
+                feasible_grounding = (
+                    feasible_role_grounding.get(
+                        feasible_candidate.candidate_id
+                    )
+                )
+
+                feasible_grounding_supported = bool(
+                    feasible_grounding is not None
+                    and feasible_grounding.supported
+                )
+
+                feasible_candidate_title = (
+                    build_candidate_review_title(
+                        proposed_role="Observed Evidence",
+                        extraction=extraction,
+                        grounding=feasible_grounding,
+                        source_name=(
+                            feasible_candidate.source_name
+                        ),
+                        approved=(
+                            feasible_candidate.candidate_id
+                            in feasible_approved_candidate_ids
+                        ),
+                    )
+                )
+
+                if (
+                    guided_requirement_candidate is not None
+                    and guided_verification_candidate is not None
+                ):
+                    feasible_connection_state = (
+                        candidate_connection_state(
+                            feasible_candidate,
+                            [
+                                guided_requirement_candidate,
+                                guided_verification_candidate,
+                            ],
                         )
                     )
 
-                    if (
-                        feasible_candidate.source_location_status
-                        == "SOURCE_LOCATION_AMBIGUOUS"
-                    ):
-                        st.warning(
-                            "Source Location Review Required"
+                    feasible_candidate_title = (
+                        "["
+                        + connection_state_label(
+                            feasible_connection_state
+                        )
+                        + "] "
+                        + feasible_candidate_title
+                    )
+
+                with st.expander(
+                    feasible_candidate_title,
+                    expanded=candidate_details_expanded,
+                ):
+                    st.caption(
+                        "PROPOSED ROLE · Observed Evidence"
+                    )
+                    source_column, data_column = (
+                        st.columns(2)
+                    )
+
+                    feasible_preview_page = (
+                        feasible_candidate.source_page
+                    )
+
+                    with source_column:
+                        st.markdown(
+                            "#### 원문 근거 (Source Evidence)"
                         )
 
-                        selected_page = st.selectbox(
-                            "Operating Evidence 원문 페이지 선택",
-                            feasible_candidate
-                            .source_location_candidates,
-                            format_func=(
-                                lambda page:
-                                f"Page {page}"
-                            ),
-                            key=(
-                                "feasible_source_location_page_"
-                                + safe_key(
-                                    feasible_candidate
-                                    .candidate_id
-                                )
-                            ),
+                        st.caption(
+                            feasible_candidate.source_name
+                            + " · Block "
+                            + str(
+                                feasible_candidate.source_block_id
+                                or "—"
+                            )
                         )
 
-                        location_confirmed = (
-                            st.checkbox(
-                                "이 원문 페이지를 확인합니다.",
+                        if (
+                            feasible_candidate.source_location_status
+                            == "SOURCE_LOCATION_AMBIGUOUS"
+                        ):
+                            st.warning(
+                                "Source Location Review Required"
+                            )
+
+                            selected_page = st.selectbox(
+                                "Operating Evidence 원문 페이지 선택",
+                                feasible_candidate
+                                .source_location_candidates,
+                                format_func=(
+                                    lambda page:
+                                    f"Page {page}"
+                                ),
                                 key=(
-                                    "feasible_source_location_confirm_"
+                                    "feasible_source_location_page_"
                                     + safe_key(
                                         feasible_candidate
                                         .candidate_id
                                     )
                                 ),
                             )
-                        )
 
-                        feasible_preview_page = (
-                            selected_page
-                        )
+                            location_confirmed = (
+                                st.checkbox(
+                                    "이 원문 페이지를 확인합니다.",
+                                    key=(
+                                        "feasible_source_location_confirm_"
+                                        + safe_key(
+                                            feasible_candidate
+                                            .candidate_id
+                                        )
+                                    ),
+                                )
+                            )
 
-                        if location_confirmed:
-                            try:
-                                feasible_candidate = (
-                                    confirm_ambiguous_feasible_source_location(
-                                        feasible_candidate,
-                                        selected_page=(
-                                            selected_page
-                                        ),
-                                        confirmed=True,
+                            feasible_preview_page = (
+                                selected_page
+                            )
+
+                            if location_confirmed:
+                                try:
+                                    feasible_candidate = (
+                                        confirm_ambiguous_feasible_source_location(
+                                            feasible_candidate,
+                                            selected_page=(
+                                                selected_page
+                                            ),
+                                            confirmed=True,
+                                        )
                                     )
+
+                                    feasible_analysis.candidates[
+                                        feasible_index - 1
+                                    ] = feasible_candidate
+
+                                    st.success(
+                                        "Operating Evidence source "
+                                        "page confirmed."
+                                    )
+
+                                except ValueError as exc:
+                                    st.error(
+                                        str(exc)
+                                    )
+
+                        elif (
+                            feasible_candidate
+                            .source_location_status
+                            in {
+                                "SOURCE_LOCATION_UNRESOLVED",
+                                "SOURCE_LOCATION_MISMATCH",
+                            }
+                        ):
+                            st.error(
+                                "Source location blocked · "
+                                + format_code_label(
+                                    feasible_candidate
+                                    .source_location_status
                                 )
+                            )
 
-                                feasible_analysis.candidates[
-                                    feasible_index - 1
-                                ] = feasible_candidate
-
-                                st.success(
-                                    "Operating Evidence source "
-                                    "page confirmed."
+                        elif feasible_candidate.source_pages:
+                            st.success(
+                                "Source location · "
+                                + ", ".join(
+                                    f"Page {page}"
+                                    for page
+                                    in feasible_candidate
+                                    .source_pages
                                 )
+                            )
 
-                            except ValueError as exc:
-                                st.error(
-                                    str(exc)
+                        feasible_pdf = (
+                            source_pdfs.get(
+                                (
+                                    "feasible",
+                                    feasible_candidate
+                                    .source_sha256,
                                 )
-
-                    elif (
-                        feasible_candidate
-                        .source_location_status
-                        in {
-                            "SOURCE_LOCATION_UNRESOLVED",
-                            "SOURCE_LOCATION_MISMATCH",
-                        }
-                    ):
-                        st.error(
-                            "Source location blocked · "
-                            + format_code_label(
-                                feasible_candidate
-                                .source_location_status
                             )
                         )
 
-                    elif feasible_candidate.source_pages:
+                        if (
+                            feasible_pdf is not None
+                            and feasible_preview_page
+                            is not None
+                        ):
+                            with st.expander(
+                                "원본 Operating Evidence "
+                                "PDF 페이지 보기"
+                            ):
+                                try:
+                                    st.pdf(
+                                        build_pdf_page_preview(
+                                            feasible_pdf,
+                                            feasible_preview_page,
+                                        ),
+                                        height=360,
+                                        key=(
+                                            "feasible_pdf_preview_"
+                                            + safe_key(
+                                                feasible_candidate
+                                                .candidate_id
+                                                + ":"
+                                                + str(
+                                                    feasible_preview_page
+                                                )
+                                            )
+                                        ),
+                                    )
+                                except Exception as exc:
+                                    st.error(
+                                        "PDF page preview failed: "
+                                        + str(exc)
+                                    )
+
+                        with st.expander(
+                            "원문 추적 정보 (Advanced)"
+                        ):
+                            st.caption(
+                                "SHA-256 · "
+                                + feasible_candidate
+                                .source_sha256
+                            )
+                            st.caption(
+                                "Candidate ID · "
+                                + feasible_candidate
+                                .candidate_id
+                            )
+                            st.write(
+                                feasible_candidate
+                                .source_text
+                            )
+
+                    with data_column:
+                        st.markdown(
+                            "#### AI 추출 후보 (AI Extracted Candidate)"
+                        )
+
+                        st.metric(
+                            "Engineering Variable",
+                            str(
+                                extraction.get(
+                                    "variable"
+                                )
+                                or "—"
+                            ),
+                        )
+
+                        range_left, range_right = (
+                            st.columns(2)
+                        )
+
+                        range_left.metric(
+                            "Feasible Min",
+                            str(
+                                extraction.get(
+                                    "min"
+                                )
+                                or "—"
+                            ),
+                        )
+
+                        range_right.metric(
+                            "Feasible Max",
+                            str(
+                                extraction.get(
+                                    "max"
+                                )
+                                or "—"
+                            ),
+                        )
+
+                        st.caption(
+                            "Unit · "
+                            + str(
+                                extraction.get(
+                                    "unit"
+                                )
+                                or "—"
+                            )
+                        )
+
+                        st.caption(
+                            "Evidence Type · "
+                            + str(
+                                extraction.get(
+                                    "evidence_type"
+                                )
+                                or "—"
+                            )
+                        )
+
+                        needs_review = bool(
+                            extraction.get(
+                                "needs_review",
+                                True,
+                            )
+                        )
+
+                        if needs_review:
+                            st.warning(
+                                "AI extraction marked this "
+                                "candidate as review-required."
+                            )
+
+                            review_reason = (
+                                extraction.get(
+                                    "review_reason"
+                                )
+                            )
+
+                            if review_reason:
+                                st.caption(
+                                    str(
+                                        review_reason
+                                    )
+                                )
+
+                        st.markdown(
+                            "#### 역할 근거 (Role Evidence)"
+                        )
+
+                        if feasible_grounding is None:
+                            st.warning(
+                                "역할 근거 · 아직 판정되지 않음"
+                            )
+                        elif feasible_grounding.supported:
+                            st.success(
+                                "역할 근거 · 확인됨 ✓"
+                            )
+                        elif (
+                            feasible_grounding.status
+                            == "REJECTED"
+                        ):
+                            st.error(
+                                "역할 근거 · 현재 역할과 맞지 않음"
+                            )
+                        else:
+                            st.warning(
+                                "역할 근거 · 추가 확인 필요"
+                            )
+
+                        if feasible_grounding is not None:
+                            st.caption(
+                                "Basis · "
+                                + feasible_grounding.basis_type
+                            )
+                            st.caption(
+                                feasible_grounding.explanation
+                            )
+
+                            if (
+                                feasible_grounding
+                                .supporting_text
+                            ):
+                                st.code(
+                                    feasible_grounding
+                                    .supporting_text,
+                                    language=None,
+                                )
+
+                        eligible_for_approval = (
+                            analysis_is_current
+                            and feasible_candidate
+                            .source_location_ready
+                            and not needs_review
+                            and feasible_grounding_supported
+                        )
+
+                        feasible_is_selected = (
+                            feasible_candidate.candidate_id
+                            in feasible_approved_candidate_ids
+                        )
+
+                        st.markdown(
+                            "#### Selection Readiness"
+                        )
+
+                        if feasible_is_selected:
+                            st.success(
+                                "Selection Readiness · "
+                                "이번 검증에 선택됨 ✓"
+                            )
+
+                            st.caption(
+                                "이 원문 근거는 이번 Formal Model의 "
+                                "Observed Evidence로 선택되어 있습니다."
+                            )
+
+                            revoke_feasible = st.button(
+                                "선택 취소",
+                                key=(
+                                    "feasible_unselect_button_"
+                                    + safe_key(
+                                        feasible_candidate.candidate_id
+                                    )
+                                ),
+                            )
+
+                            if revoke_feasible:
+                                feasible_approved_candidate_ids.remove(
+                                    feasible_candidate.candidate_id
+                                )
+
+                                st.session_state[
+                                    "feasible_approved_candidate_ids"
+                                ] = list(
+                                    feasible_approved_candidate_ids
+                                )
+
+                                st.rerun()
+
+                        elif eligible_for_approval:
+                            st.success(
+                                "Selection Readiness · 선택 가능 ✓"
+                            )
+
+                            st.caption(
+                                "원문 위치, 역할 근거, 수치·단위와 "
+                                "review gate가 준비되었습니다. "
+                                "원문을 확인한 뒤 이번 검증에 사용할지 "
+                                "Engineer가 결정합니다."
+                            )
+
+                            select_feasible = st.button(
+                                "이 근거를 Observed Evidence로 사용",
+                                type="primary",
+                                key=(
+                                    "feasible_select_button_"
+                                    + safe_key(
+                                        feasible_candidate.candidate_id
+                                    )
+                                ),
+                            )
+
+                            if select_feasible:
+                                # Guided Review uses exactly one
+                                # Observed Evidence candidate.
+                                feasible_approved_candidate_ids = [
+                                    feasible_candidate.candidate_id
+                                ]
+
+                                st.session_state[
+                                    "feasible_approved_candidate_ids"
+                                ] = list(
+                                    feasible_approved_candidate_ids
+                                )
+
+                                st.rerun()
+
+                        else:
+                            st.warning(
+                                "Selection Readiness · 추가 검토 필요"
+                            )
+
+                            if not analysis_is_current:
+                                st.caption(
+                                    "분석 이후 source가 변경되었습니다. "
+                                    "문서를 다시 분석해야 합니다."
+                                )
+                            elif not (
+                                feasible_candidate
+                                .source_location_ready
+                            ):
+                                st.caption(
+                                    "원문 위치 확인이 아직 완료되지 않았습니다."
+                                )
+                            elif needs_review:
+                                st.caption(
+                                    "추출된 값 또는 조건에 unresolved "
+                                    "review가 남아 있습니다."
+                                )
+                            elif not feasible_grounding_supported:
+                                st.caption(
+                                    "현재 역할의 근거가 아직 확정되지 않았습니다."
+                                )
+                            else:
+                                st.caption(
+                                    "선택에 필요한 review gate가 "
+                                    "아직 완료되지 않았습니다."
+                                )
+
+
+            st.session_state[
+                "feasible_analysis"
+            ] = feasible_analysis
+
+            st.session_state[
+                "feasible_approved_candidate_ids"
+            ] = feasible_approved_candidate_ids
+
+            if feasible_approved_candidate_ids:
+                st.success(
+                    "선택된 Observed Evidence 후보 · "
+                    + str(
+                        len(
+                            feasible_approved_candidate_ids
+                        )
+                    )
+                )
+
+            st.caption(
+                "이번 단계에서는 승인된 F 후보를 "
+                "EngineeringCase나 Solver에 아직 적용하지 않습니다."
+            )
+
+            st.divider()
+
+    current_feasible_review_signature = (
+        build_feasible_review_signature(
+            feasible_analysis,
+            feasible_approved_candidate_ids,
+        )
+    )
+
+    approved_candidate_ids = list(
+        st.session_state.get(
+            "semantic_approved_candidate_ids",
+            [],
+        )
+    )
+    analysis = deepcopy(analysis)
+
+    if candidate_category in (
+        "Requirement",
+        "Verification",
+    ):
+        semantic_role_filter = candidate_category
+
+        semantic_role_key = (
+            "requirement"
+            if candidate_category == "Requirement"
+            else "verification"
+        )
+
+        selected_semantic_candidates = [
+            candidate
+            for candidate in analysis.candidates
+            if candidate.role == semantic_role_key
+        ]
+
+        semantic_status_counts = {
+            "SUPPORTED": 0,
+            "REVIEW REQUIRED": 0,
+            "REJECTED": 0,
+            "NOT ESTABLISHED": 0,
+        }
+
+        for candidate in selected_semantic_candidates:
+            status = grounding_display_status(
+                semantic_role_grounding.get(
+                    candidate.candidate_id
+                )
+            )
+            semantic_status_counts[status] += 1
+
+        semantic_category_title = {
+            "Requirement": (
+                "① 설계 요구조건 후보 "
+                "(Requirement Candidates)"
+            ),
+            "Verification": (
+                "② 검사 / 합격 기준 후보 "
+                "(Verification Criterion Candidates)"
+            ),
+        }[
+            candidate_category
+        ]
+
+        st.markdown(
+            "### " + semantic_category_title
+        )
+
+        if candidate_category == "Requirement":
+            st.caption(
+                "제품이나 시스템이 실제로 만족해야 하는 "
+                "설계·기술 기준 후보입니다. 원문의 적용 대상, "
+                "수치, 단위를 확인하세요."
+            )
+        else:
+            st.caption(
+                "실제 검사·시험에서 통과 여부를 판단하는 "
+                "기준 후보입니다. 단순 설계값이나 operating "
+                "limit가 아닌 실제 acceptance criterion인지 "
+                "확인하세요."
+            )
+
+        st.caption(
+            "후보 현황 · 전체 "
+            f"Total {len(selected_semantic_candidates)}"
+        )
+
+        st.caption(
+            "Grounding · "
+            f"SUPPORTED "
+            f"{semantic_status_counts['SUPPORTED']} · "
+            f"REVIEW REQUIRED "
+            f"{semantic_status_counts['REVIEW REQUIRED']} · "
+            f"REJECTED "
+            f"{semantic_status_counts['REJECTED']}"
+        )
+
+        semantic_status_filter = st.selectbox(
+            "후보 보기",
+            (
+                "SUPPORTED",
+                "REVIEW REQUIRED",
+                "REJECTED",
+                "전체",
+            ),
+            format_func=lambda value: {
+                "SUPPORTED": "역할 근거 확인됨",
+                "REVIEW REQUIRED": "추가 확인 필요",
+                "REJECTED": "현재 역할과 맞지 않음",
+                "전체": "전체 후보 보기",
+            }[value],
+            key="semantic_grounding_status_filter",
+        )
+
+        st.caption(
+            "표시 필터는 보기만 바꾸며 Proposed Role, "
+            "Role Grounding, source evidence를 변경하지 않습니다."
+        )
+
+        semantic_search_query = st.text_input(
+            "후보 검색",
+            placeholder=(
+                "예: hardness, HRC, pressure, source file name"
+            ),
+            key=(
+                "semantic_candidate_search_"
+                + candidate_category
+            ),
+        )
+
+        visible_semantic_candidates = []
+
+        for candidate in analysis.candidates:
+            role_matches = (
+                semantic_role_filter == "전체"
+                or (
+                    semantic_role_filter == "Requirement"
+                    and candidate.role == "requirement"
+                )
+                or (
+                    semantic_role_filter == "Verification"
+                    and candidate.role == "verification"
+                )
+            )
+
+            status_matches = (
+                semantic_status_filter == "전체"
+                or grounding_display_status(
+                    semantic_role_grounding.get(
+                        candidate.candidate_id
+                    )
+                )
+                == semantic_status_filter
+            )
+
+            if role_matches and status_matches:
+                visible_semantic_candidates.append(
+                    candidate
+                )
+
+        normalized_semantic_search = (
+            semantic_search_query
+            .strip()
+            .lower()
+        )
+
+        if normalized_semantic_search:
+            visible_semantic_candidates = [
+                candidate
+                for candidate
+                in visible_semantic_candidates
+                if normalized_semantic_search
+                in (
+                    format_candidate_review_summary(
+                        candidate.extraction
+                    )
+                    + " "
+                    + str(
+                        candidate.source_name
+                        or ""
+                    )
+                ).lower()
+            ]
+
+        semantic_connection_counts = {
+            "DIRECT": 0,
+            "REVIEW": 0,
+            "MISMATCH": 0,
+            "NO_CONTEXT": 0,
+        }
+
+        semantic_connection_anchors = []
+
+        if (
+            candidate_category == "Verification"
+            and guided_requirement_candidate is not None
+        ):
+            semantic_connection_anchors = [
+                guided_requirement_candidate
+            ]
+
+        for candidate in visible_semantic_candidates:
+            state = candidate_connection_state(
+                candidate,
+                semantic_connection_anchors,
+            )
+            semantic_connection_counts[state] += 1
+
+        if semantic_connection_anchors:
+            visible_semantic_candidates.sort(
+                key=lambda candidate: (
+                    connection_state_priority(
+                        candidate_connection_state(
+                            candidate,
+                            semantic_connection_anchors,
+                        )
+                    ),
+                    format_candidate_review_summary(
+                        candidate.extraction
+                    ).lower(),
+                )
+            )
+
+            st.caption(
+                "현재 Requirement와의 연결 안내 · "
+                f"직접 연결 {semantic_connection_counts['DIRECT']} · "
+                f"Mapping 검토 {semantic_connection_counts['REVIEW']} · "
+                "바로 연결되지 않음 "
+                f"{semantic_connection_counts['MISMATCH']}"
+            )
+
+        selected_semantic_count = sum(
+            candidate.candidate_id
+            in approved_candidate_ids
+            for candidate
+            in selected_semantic_candidates
+        )
+
+        st.caption(
+            "표시 중 · "
+            f"{len(visible_semantic_candidates)} / "
+            f"{len(selected_semantic_candidates)}"
+            "  ·  Formal Model 선택 · "
+            f"{selected_semantic_count}"
+        )
+
+        for index, candidate in enumerate(
+            visible_semantic_candidates,
+            start=1,
+        ):
+            semantic_grounding = (
+                semantic_role_grounding.get(
+                    candidate.candidate_id
+                )
+            )
+
+            semantic_grounding_supported = bool(
+                semantic_grounding is not None
+                and semantic_grounding.supported
+            )
+
+            role_label = (
+                "설계 요구조건 (Requirement)"
+                if candidate.role
+                == "requirement"
+                else "검사 기준 (Verification Criterion)"
+            )
+
+            semantic_candidate_title = (
+                build_candidate_review_title(
+                    proposed_role=(
+                        "Requirement"
+                        if candidate.role == "requirement"
+                        else "Verification"
+                    ),
+                    extraction=candidate.extraction,
+                    grounding=semantic_grounding,
+                    source_name=candidate.source_name,
+                    approved=(
+                        candidate.candidate_id
+                        in approved_candidate_ids
+                    ),
+                )
+            )
+
+            if (
+                candidate_category == "Verification"
+                and guided_requirement_candidate is not None
+            ):
+                semantic_connection_state = (
+                    candidate_connection_state(
+                        candidate,
+                        [
+                            guided_requirement_candidate
+                        ],
+                    )
+                )
+
+                semantic_candidate_title = (
+                    "["
+                    + connection_state_label(
+                        semantic_connection_state
+                    )
+                    + "] "
+                    + semantic_candidate_title
+                )
+
+            with st.expander(
+                semantic_candidate_title,
+                expanded=candidate_details_expanded,
+            ):
+                st.caption(
+                    "PROPOSED ROLE · "
+                    + (
+                        "Requirement"
+                        if candidate.role == "requirement"
+                        else "Verification"
+                    )
+                )
+
+                source_column, semantics_column = (
+                    st.columns(2)
+                )
+
+                preview_page = candidate.source_page
+
+                with source_column:
+                    st.subheader(
+                        "원문 근거 (Source Evidence)"
+                    )
+
+                    source = candidate.source_name
+                    block = (
+                        candidate.source_block_id
+                        or "—"
+                    )
+
+                    st.caption(
+                        f"{source} · Block {block}"
+                    )
+
+                    if candidate.source_sha256:
+                        with st.expander(
+                            "원문 추적 정보 (Advanced)"
+                        ):
+                            st.caption(
+                                "SHA-256 · "
+                                + candidate.source_sha256
+                            )
+                            st.caption(
+                                "Block · "
+                                + str(block)
+                            )
+                            st.caption(
+                                "Candidate ID · "
+                                + candidate.candidate_id
+                            )
+
+                    if (
+                        candidate.source_location_status
+                        == "SOURCE_LOCATION_AMBIGUOUS"
+                    ):
+                        st.warning(
+                            "Source Location Review Required"
+                        )
+                        st.write(
+                            "Candidate source block found on: "
+                            + ", ".join(
+                                "Page " + str(page)
+                                for page in candidate
+                                .source_location_candidates
+                            )
+                        )
+
+                        selected_page = st.selectbox(
+                            "Select the source page",
+                            candidate.source_location_candidates,
+                            format_func=(
+                                lambda page: f"Page {page}"
+                            ),
+                            key=(
+                                "source_location_page_"
+                                + safe_key(
+                                    candidate.candidate_id
+                                )
+                            ),
+                        )
+                        source_confirmed = st.checkbox(
+                            "Confirm this source location",
+                            key=(
+                                "source_location_confirm_"
+                                + safe_key(
+                                    candidate.candidate_id
+                                )
+                            ),
+                        )
+                        preview_page = selected_page
+
+                        if source_confirmed:
+                            try:
+                                candidate = (
+                                    confirm_ambiguous_source_location(
+                                        candidate,
+                                        selected_page,
+                                        True,
+                                    )
+                                )
+                                analysis.candidates[
+                                    index - 1
+                                ] = candidate
+                                st.success(
+                                    "Source page confirmed separately "
+                                    "from semantic approval."
+                                )
+                            except ValueError as exc:
+                                st.error(str(exc))
+
+                    elif candidate.source_location_status in {
+                        "SOURCE_LOCATION_UNRESOLVED",
+                        "SOURCE_LOCATION_MISMATCH",
+                    }:
+                        st.error(
+                            "Source location blocked · "
+                            + format_code_label(
+                                candidate.source_location_status
+                            )
+                        )
+
+                    elif candidate.source_pages:
                         st.success(
                             "Source location · "
                             + ", ".join(
                                 f"Page {page}"
-                                for page
-                                in feasible_candidate
-                                .source_pages
+                                for page in candidate.source_pages
                             )
                         )
 
-                    feasible_pdf = (
-                        source_pdfs.get(
-                            (
-                                "feasible",
-                                feasible_candidate
-                                .source_sha256,
+                        if len(candidate.source_pages) > 1:
+                            preview_page = st.selectbox(
+                                "Preview source page",
+                                candidate.source_pages,
+                                format_func=(
+                                    lambda page: f"Page {page}"
+                                ),
+                                key=(
+                                    "source_preview_page_"
+                                    + safe_key(
+                                        candidate.candidate_id
+                                    )
+                                ),
                             )
+
+                    pdf_document = source_pdfs.get(
+                        (
+                            candidate.role,
+                            candidate.source_sha256,
                         )
                     )
 
                     if (
-                        feasible_pdf is not None
-                        and feasible_preview_page
-                        is not None
+                        pdf_document is not None
+                        and preview_page is not None
                     ):
                         with st.expander(
-                            "원본 Operating Evidence "
-                            "PDF 페이지 보기"
+                            "원본 PDF 페이지 보기"
                         ):
                             try:
                                 st.pdf(
                                     build_pdf_page_preview(
-                                        feasible_pdf,
-                                        feasible_preview_page,
+                                        pdf_document,
+                                        preview_page,
                                     ),
                                     height=360,
                                     key=(
-                                        "feasible_pdf_preview_"
+                                        "pdf_preview_"
                                         + safe_key(
-                                            feasible_candidate
-                                            .candidate_id
+                                            candidate.candidate_id
                                             + ":"
-                                            + str(
-                                                feasible_preview_page
-                                            )
+                                            + str(preview_page)
                                         )
                                     ),
                                 )
@@ -1080,490 +4390,548 @@ if analysis is not None:
                                     + str(exc)
                                 )
 
+                        page_record = (
+                            pdf_document.page(
+                                preview_page
+                            )
+                        )
+
+                        if page_record is not None:
+                            with st.expander(
+                                "추출된 페이지 텍스트"
+                            ):
+                                st.write(
+                                    page_record.text
+                                )
+
+                    elif pdf_document is not None:
+                        with st.expander(
+                            "View original PDF"
+                        ):
+                            try:
+                                st.pdf(
+                                    pdf_document.raw_bytes,
+                                    height=480,
+                                    key=(
+                                        "pdf_document_"
+                                        + safe_key(
+                                            candidate.candidate_id
+                                        )
+                                    ),
+                                )
+                            except Exception as exc:
+                                st.error(
+                                    "PDF preview failed: "
+                                    + str(exc)
+                                )
+
                     with st.expander(
-                        "원문 추적 정보 (Advanced)"
+                        "Candidate source block"
                     ):
-                        st.caption(
-                            "SHA-256 · "
-                            + feasible_candidate
-                            .source_sha256
-                        )
-                        st.caption(
-                            "Candidate ID · "
-                            + feasible_candidate
-                            .candidate_id
-                        )
-                        st.write(
-                            feasible_candidate
-                            .source_text
+                        st.code(
+                            candidate.source_text,
+                            language=None,
                         )
 
-                with data_column:
+                with semantics_column:
                     st.markdown(
-                        "#### 추출된 현실 가능 범위"
+                        "#### AI 추출 후보 (AI Extracted Candidate)"
+                    )
+                    st.subheader(
+                        f"{role_label} "
+                        f"{candidate.constraint_id}"
                     )
 
-                    st.metric(
-                        "Engineering Variable",
-                        str(
-                            extraction.get(
-                                "variable"
-                            )
-                            or "—"
-                        ),
-                    )
-
-                    range_left, range_right = (
-                        st.columns(2)
-                    )
-
-                    range_left.metric(
-                        "Feasible Min",
-                        str(
-                            extraction.get(
-                                "min"
-                            )
-                            or "—"
-                        ),
-                    )
-
-                    range_right.metric(
-                        "Feasible Max",
-                        str(
-                            extraction.get(
-                                "max"
-                            )
-                            or "—"
-                        ),
+                    st.markdown(
+                        "### "
+                        + format_constraint(
+                            candidate.extraction
+                        )
                     )
 
                     st.caption(
-                        "Unit · "
+                        "Constraint Type · "
+                        + format_code_label(
+                            str(
+                                candidate.extraction.get(
+                                    "type",
+                                    "unknown",
+                                )
+                            )
+                        )
+                        + " · Unit · "
                         + str(
-                            extraction.get(
+                            candidate.extraction.get(
                                 "unit"
                             )
                             or "—"
                         )
                     )
 
-                    st.caption(
-                        "Evidence Type · "
-                        + str(
-                            extraction.get(
-                                "evidence_type"
-                            )
-                            or "—"
-                        )
+                    st.markdown(
+                        "#### 역할 근거 (Role Evidence)"
                     )
 
-                    needs_review = bool(
-                        extraction.get(
-                            "needs_review",
-                            True,
-                        )
-                    )
-
-                    if needs_review:
+                    if semantic_grounding is None:
                         st.warning(
-                            "AI extraction marked this "
-                            "candidate as review-required."
+                            "역할 근거 · 아직 판정되지 않음"
                         )
-
-                        review_reason = (
-                            extraction.get(
-                                "review_reason"
-                            )
+                    elif semantic_grounding.supported:
+                        st.success(
+                            "역할 근거 · 확인됨 ✓"
                         )
-
-                        if review_reason:
-                            st.caption(
-                                str(
-                                    review_reason
-                                )
-                            )
-
-                    eligible_for_approval = (
-                        analysis_is_current
-                        and feasible_candidate
-                        .source_location_ready
-                        and not needs_review
-                    )
-
-                    approved = st.checkbox(
-                        "이 Operating Evidence를 "
-                        "Feasible Domain 후보로 승인합니다.",
-                        key=(
-                            "feasible_approval_"
-                            + safe_key(
-                                feasible_candidate
-                                .candidate_id
-                            )
-                        ),
-                        disabled=(
-                            not eligible_for_approval
-                        ),
-                    )
-
-                    if approved:
-                        feasible_approved_candidate_ids.append(
-                            feasible_candidate
-                            .candidate_id
-                        )
-
-        st.session_state[
-            "feasible_analysis"
-        ] = feasible_analysis
-
-        st.session_state[
-            "feasible_approved_candidate_ids"
-        ] = feasible_approved_candidate_ids
-
-        if feasible_approved_candidate_ids:
-            st.success(
-                "승인된 Operating Evidence 후보 · "
-                + str(
-                    len(
-                        feasible_approved_candidate_ids
-                    )
-                )
-            )
-
-        st.caption(
-            "이번 단계에서는 승인된 F 후보를 "
-            "EngineeringCase나 Solver에 아직 적용하지 않습니다."
-        )
-
-        st.divider()
-
-    current_feasible_review_signature = (
-        build_feasible_review_signature(
-            feasible_analysis,
-            feasible_approved_candidate_ids,
-        )
-    )
-
-    approved_candidate_ids = []
-    analysis = deepcopy(analysis)
-
-    for index, candidate in enumerate(
-        analysis.candidates,
-        start=1,
-    ):
-        role_label = (
-            "설계 요구조건 (Requirement)"
-            if candidate.role
-            == "requirement"
-            else "검사 기준 (Verification Criterion)"
-        )
-
-        with st.container(
-            border=True
-        ):
-            source_column, semantics_column = (
-                st.columns(2)
-            )
-
-            preview_page = candidate.source_page
-
-            with source_column:
-                st.subheader(
-                    "원문 근거 (Source Evidence)"
-                )
-
-                source = candidate.source_name
-                block = (
-                    candidate.source_block_id
-                    or "—"
-                )
-
-                st.caption(
-                    f"{source} · Block {block}"
-                )
-
-                if candidate.source_sha256:
-                    with st.expander(
-                        "원문 추적 정보 (Advanced)"
+                    elif (
+                        semantic_grounding.status
+                        == "REJECTED"
                     ):
+                        st.error(
+                            "역할 근거 · 현재 역할과 맞지 않음"
+                        )
+                    else:
+                        st.warning(
+                            "역할 근거 · 추가 확인 필요"
+                        )
+
+                    if semantic_grounding is not None:
                         st.caption(
-                            "SHA-256 · "
-                            + candidate.source_sha256
+                            "Basis · "
+                            + semantic_grounding.basis_type
                         )
                         st.caption(
-                            "Block · "
-                            + str(block)
+                            semantic_grounding.explanation
                         )
+
+                        if semantic_grounding.supporting_text:
+                            st.code(
+                                semantic_grounding.supporting_text,
+                                language=None,
+                            )
+
+                    reviewed_adapter = None
+                    strict_review_ready = False
+
+                    if (
+                        candidate.source_location_ready
+                        and semantic_grounding_supported
+                    ):
+                        reviewed_adapter = (
+                            build_engineer_reviewed_semantic_adapter(
+                                candidate,
+                                semantic_grounding,
+                            )
+                        )
+
+                        strict_review_ready = (
+                            reviewed_adapter is not None
+                            and reviewed_adapter.accepted
+                        )
+
+                    if strict_review_ready:
+                        st.success(
+                            "검토 준비 완료"
+                        )
+                    elif (
+                        candidate.source_location_status
+                        == "SOURCE_LOCATION_AMBIGUOUS"
+                    ):
+                        st.warning(
+                            "Confirm the source page before "
+                            "semantic approval."
+                        )
+                    else:
+                        st.error(
+                            "Blocked"
+                        )
+
+                    with st.expander(
+                        "고급 정보 · Raw extraction"
+                    ):
+                        st.json(
+                            candidate.extraction
+                        )
+
+                    semantic_is_selected = (
+                        candidate.candidate_id
+                        in approved_candidate_ids
+                    )
+
+                    formal_role_label = (
+                        "Requirement"
+                        if candidate.role == "requirement"
+                        else "Verification Criterion"
+                    )
+
+                    st.markdown(
+                        "#### Selection Readiness"
+                    )
+
+                    if semantic_is_selected:
+                        st.success(
+                            "Selection Readiness · "
+                            "이번 검증에 선택됨 ✓"
+                        )
+
                         st.caption(
-                            "Candidate ID · "
-                            + candidate.candidate_id
+                            "이 원문 근거는 이번 Formal Model의 "
+                            + formal_role_label
+                            + "으로 선택되어 있습니다."
                         )
 
-                if (
-                    candidate.source_location_status
-                    == "SOURCE_LOCATION_AMBIGUOUS"
-                ):
-                    st.warning(
-                        "Source Location Review Required"
-                    )
-                    st.write(
-                        "Candidate source block found on: "
-                        + ", ".join(
-                            "Page " + str(page)
-                            for page in candidate
-                            .source_location_candidates
-                        )
-                    )
-
-                    selected_page = st.selectbox(
-                        "Select the source page",
-                        candidate.source_location_candidates,
-                        format_func=(
-                            lambda page: f"Page {page}"
-                        ),
-                        key=(
-                            "source_location_page_"
-                            + safe_key(
-                                candidate.candidate_id
-                            )
-                        ),
-                    )
-                    source_confirmed = st.checkbox(
-                        "Confirm this source location",
-                        key=(
-                            "source_location_confirm_"
-                            + safe_key(
-                                candidate.candidate_id
-                            )
-                        ),
-                    )
-                    preview_page = selected_page
-
-                    if source_confirmed:
-                        try:
-                            candidate = (
-                                confirm_ambiguous_source_location(
-                                    candidate,
-                                    selected_page,
-                                    True,
-                                )
-                            )
-                            analysis.candidates[
-                                index - 1
-                            ] = candidate
-                            st.success(
-                                "Source page confirmed separately "
-                                "from semantic approval."
-                            )
-                        except ValueError as exc:
-                            st.error(str(exc))
-
-                elif candidate.source_location_status in {
-                    "SOURCE_LOCATION_UNRESOLVED",
-                    "SOURCE_LOCATION_MISMATCH",
-                }:
-                    st.error(
-                        "Source location blocked · "
-                        + format_code_label(
-                            candidate.source_location_status
-                        )
-                    )
-
-                elif candidate.source_pages:
-                    st.success(
-                        "Source location · "
-                        + ", ".join(
-                            f"Page {page}"
-                            for page in candidate.source_pages
-                        )
-                    )
-
-                    if len(candidate.source_pages) > 1:
-                        preview_page = st.selectbox(
-                            "Preview source page",
-                            candidate.source_pages,
-                            format_func=(
-                                lambda page: f"Page {page}"
-                            ),
+                        revoke_semantic = st.button(
+                            "선택 취소",
                             key=(
-                                "source_preview_page_"
+                                "semantic_unselect_button_"
                                 + safe_key(
                                     candidate.candidate_id
                                 )
                             ),
                         )
 
-                pdf_document = source_pdfs.get(
-                    (
-                        candidate.role,
-                        candidate.source_sha256,
-                    )
-                )
-
-                if (
-                    pdf_document is not None
-                    and preview_page is not None
-                ):
-                    with st.expander(
-                        "원본 PDF 페이지 보기"
-                    ):
-                        try:
-                            st.pdf(
-                                build_pdf_page_preview(
-                                    pdf_document,
-                                    preview_page,
-                                ),
-                                height=360,
-                                key=(
-                                    "pdf_preview_"
-                                    + safe_key(
-                                        candidate.candidate_id
-                                        + ":"
-                                        + str(preview_page)
-                                    )
-                                ),
-                            )
-                        except Exception as exc:
-                            st.error(
-                                "PDF page preview failed: "
-                                + str(exc)
+                        if revoke_semantic:
+                            approved_candidate_ids.remove(
+                                candidate.candidate_id
                             )
 
-                    page_record = (
-                        pdf_document.page(
-                            preview_page
+                            st.session_state[
+                                "semantic_approved_candidate_ids"
+                            ] = list(
+                                approved_candidate_ids
+                            )
+
+                            st.rerun()
+
+                    elif strict_review_ready:
+                        st.success(
+                            "Selection Readiness · 선택 가능 ✓"
                         )
-                    )
 
-                    if page_record is not None:
-                        with st.expander(
-                            "추출된 페이지 텍스트"
-                        ):
-                            st.write(
-                                page_record.text
-                            )
-
-                elif pdf_document is not None:
-                    with st.expander(
-                        "View original PDF"
-                    ):
-                        try:
-                            st.pdf(
-                                pdf_document.raw_bytes,
-                                height=480,
-                                key=(
-                                    "pdf_document_"
-                                    + safe_key(
-                                        candidate.candidate_id
-                                    )
-                                ),
-                            )
-                        except Exception as exc:
-                            st.error(
-                                "PDF preview failed: "
-                                + str(exc)
-                            )
-
-                with st.expander(
-                    "Candidate source block"
-                ):
-                    st.code(
-                        candidate.source_text,
-                        language=None,
-                    )
-
-            with semantics_column:
-                st.subheader(
-                    f"{role_label} "
-                    f"{candidate.constraint_id}"
-                )
-
-                st.markdown(
-                    "### "
-                    + format_constraint(
-                        candidate.extraction
-                    )
-                )
-
-                st.caption(
-                    "Constraint Type · "
-                    + format_code_label(
-                        str(
-                            candidate.extraction.get(
-                                "type",
-                                "unknown",
-                            )
+                        st.caption(
+                            "원문 위치, 역할 근거와 strict review gate가 "
+                            "준비되었습니다. 원문과 공학적 의미를 확인한 뒤 "
+                            "이번 검증에 사용할지 Engineer가 결정합니다."
                         )
-                    )
-                    + " · Unit · "
-                    + str(
-                        candidate.extraction.get(
-                            "unit"
+
+                        select_semantic = st.button(
+                            (
+                                "이 근거를 Requirement로 사용"
+                                if candidate.role == "requirement"
+                                else
+                                "이 근거를 Verification Criterion으로 사용"
+                            ),
+                            type="primary",
+                            key=(
+                                "semantic_select_button_"
+                                + safe_key(
+                                    candidate.candidate_id
+                                )
+                            ),
                         )
-                        or "—"
-                    )
-                )
 
-                if (
-                    candidate.adapter_accepted
-                    and candidate.source_location_ready
-                ):
-                    st.success(
-                        "검토 준비 완료"
-                    )
-                elif (
-                    candidate.source_location_status
-                    == "SOURCE_LOCATION_AMBIGUOUS"
-                ):
-                    st.warning(
-                        "Confirm the source page before "
-                        "semantic approval."
-                    )
-                else:
-                    st.error(
-                        "Blocked"
-                    )
+                        if select_semantic:
+                            # Keep one selected candidate per
+                            # semantic role. Choosing another
+                            # Requirement replaces Requirement only;
+                            # Verification behaves independently.
+                            same_role_candidate_ids = {
+                                item.candidate_id
+                                for item in analysis.candidates
+                                if item.role == candidate.role
+                            }
 
-                with st.expander(
-                    "고급 정보 · Raw extraction"
-                ):
-                    st.json(
-                        candidate.extraction
-                    )
+                            approved_candidate_ids = [
+                                candidate_id
+                                for candidate_id
+                                in approved_candidate_ids
+                                if candidate_id
+                                not in same_role_candidate_ids
+                            ]
 
-                approved = st.checkbox(
-                    "이 공학 의미 해석을 승인합니다",
-                    key=(
-                        "semantic_approval_"
-                        + candidate.candidate_id
-                    ),
-                    disabled=(
-                        not candidate.adapter_accepted
-                        or not candidate.source_location_ready
-                        or not analysis_is_current
-                    ),
-                )
+                            approved_candidate_ids.append(
+                                candidate.candidate_id
+                            )
 
-                if (
-                    approved
-                    and candidate.adapter_accepted
-                    and candidate.source_location_ready
-                ):
-                    approved_candidate_ids.append(
-                        candidate.candidate_id
-                    )
+                            st.session_state[
+                                "semantic_approved_candidate_ids"
+                            ] = list(
+                                approved_candidate_ids
+                            )
 
-    all_semantics_approved = (
-        analysis_is_current
-        and bool(
-            analysis.candidates
-        )
-        and len(
-            approved_candidate_ids
-        )
-        == len(
-            analysis.candidates
+                            st.rerun()
+
+                    else:
+                        st.warning(
+                            "Selection Readiness · 추가 검토 필요"
+                        )
+
+                        if not analysis_is_current:
+                            st.caption(
+                                "분석 이후 source가 변경되었습니다. "
+                                "문서를 다시 분석해야 합니다."
+                            )
+                        elif not candidate.source_location_ready:
+                            st.caption(
+                                "원문 위치 확인이 아직 완료되지 않았습니다."
+                            )
+                        elif not semantic_grounding_supported:
+                            st.caption(
+                                "현재 역할의 근거가 아직 확정되지 않았습니다."
+                            )
+                        elif not strict_review_ready:
+                            st.caption(
+                                "구조화된 constraint가 strict review gate를 "
+                                "아직 통과하지 못했습니다."
+                            )
+                        else:
+                            st.caption(
+                                "선택에 필요한 review gate가 "
+                                "아직 완료되지 않았습니다."
+                            )
+
+
+    st.session_state[
+        "semantic_approved_candidate_ids"
+    ] = list(
+        approved_candidate_ids
+    )
+
+    role_completeness = (
+        evaluate_role_completeness(
+            semantic_analysis=analysis,
+            approved_semantic_candidate_ids=(
+                approved_candidate_ids
+            ),
+            semantic_grounding_by_candidate_id=(
+                semantic_role_grounding
+            ),
+            feasible_analysis=feasible_analysis,
+            approved_feasible_candidate_ids=(
+                feasible_approved_candidate_ids
+            ),
+            feasible_grounding_by_candidate_id=(
+                feasible_role_grounding
+            ),
         )
     )
+
+    role_set_ready = (
+        analysis_is_current
+        and role_completeness.ready
+    )
+
+    selected_requirement = next(
+        (
+            candidate
+            for candidate in analysis.candidates
+            if (
+                candidate.role == "requirement"
+                and candidate.candidate_id
+                in approved_candidate_ids
+            )
+        ),
+        None,
+    )
+
+    selected_verification = next(
+        (
+            candidate
+            for candidate in analysis.candidates
+            if (
+                candidate.role == "verification"
+                and candidate.candidate_id
+                in approved_candidate_ids
+            )
+        ),
+        None,
+    )
+
+    selected_feasible = None
+    if feasible_analysis is not None:
+        selected_feasible = next(
+            (
+                candidate
+                for candidate in feasible_analysis.candidates
+                if candidate.candidate_id
+                in feasible_approved_candidate_ids
+            ),
+            None,
+        )
+
+    compatibility_candidates = [
+        selected_requirement,
+        selected_verification,
+        selected_feasible,
+    ]
+
+    role_alignment_ready = (
+        role_set_ready
+        and all(
+            candidate is not None
+            for candidate in compatibility_candidates
+        )
+    )
+
+    source_provenance_ready = (
+        role_alignment_ready
+        and all(
+            bool(candidate.source_location_ready)
+            for candidate in compatibility_candidates
+        )
+    )
+
+    def compatibility_value(candidate, field):
+        if candidate is None:
+            return ""
+        return str(
+            (candidate.extraction or {}).get(field)
+            or ""
+        ).strip()
+
+    requirement_variable = compatibility_value(
+        selected_requirement,
+        "variable",
+    )
+    verification_variable = compatibility_value(
+        selected_verification,
+        "variable",
+    )
+    feasible_variable = compatibility_value(
+        selected_feasible,
+        "variable",
+    )
+
+    requirement_unit = compatibility_value(
+        selected_requirement,
+        "unit",
+    )
+    verification_unit = compatibility_value(
+        selected_verification,
+        "unit",
+    )
+    feasible_unit = compatibility_value(
+        selected_feasible,
+        "unit",
+    )
+
+    compatibility_units = [
+        requirement_unit,
+        verification_unit,
+        feasible_unit,
+    ]
+
+    unit_alignment_ready = (
+        role_alignment_ready
+        and all(compatibility_units)
+        and len(set(compatibility_units)) == 1
+    )
+
+    requirement_group_key = (
+        normalize_source_variable_group_key(
+            requirement_variable
+        )
+        if requirement_variable
+        else ""
+    )
+
+    verification_group_key = (
+        normalize_source_variable_group_key(
+            verification_variable
+        )
+        if verification_variable
+        else ""
+    )
+
+    feasible_group_key_original = (
+        normalize_source_variable_group_key(
+            feasible_variable
+        )
+        if feasible_variable
+        else ""
+    )
+
+    compatibility_group_keys = [
+        requirement_group_key,
+        verification_group_key,
+        feasible_group_key_original,
+    ]
+
+    exact_variable_alignment = (
+        role_alignment_ready
+        and all(compatibility_group_keys)
+        and len(set(compatibility_group_keys)) == 1
+    )
+
+    compatibility_signature_parts = [
+        candidate.candidate_id
+        if candidate is not None
+        else ""
+        for candidate in compatibility_candidates
+    ]
+
+    compatibility_signature = hashlib.sha256(
+        "|".join(
+            compatibility_signature_parts
+        ).encode("utf-8")
+    ).hexdigest()
+
+    if (
+        st.session_state.get(
+            "evidence_compatibility_signature"
+        )
+        != compatibility_signature
+    ):
+        st.session_state[
+            "evidence_compatibility_signature"
+        ] = compatibility_signature
+        st.session_state[
+            "engineer_variable_mapping_confirmed"
+        ] = False
+        st.session_state[
+            "engineer_feasible_group_override"
+        ] = {}
+
+    engineer_variable_mapping_confirmed = bool(
+        st.session_state.get(
+            "engineer_variable_mapping_confirmed",
+            False,
+        )
+    )
+
+    variable_alignment_ready = (
+        exact_variable_alignment
+        or (
+            unit_alignment_ready
+            and engineer_variable_mapping_confirmed
+        )
+    )
+
+    compatibility_ready = (
+        role_alignment_ready
+        and source_provenance_ready
+        and unit_alignment_ready
+        and variable_alignment_ready
+    )
+
+    formalization_ready = (
+        analysis_is_current
+        and role_set_ready
+        and compatibility_ready
+    )
+
+    established_semantic_ids = set(
+        role_completeness
+        .established_semantic_candidate_ids
+    )
+
+    approved_analysis = deepcopy(
+        analysis
+    )
+
+    approved_analysis.candidates = [
+        candidate
+        for candidate in analysis.candidates
+        if candidate.candidate_id
+        in established_semantic_ids
+    ]
 
     current_semantic_review_signature = (
         build_semantic_review_signature(
@@ -1572,28 +4940,325 @@ if analysis is not None:
         )
     )
 
-    if all_semantics_approved:
+    st.markdown(
+        "### Role Completeness"
+    )
+
+    completeness_columns = st.columns(3)
+
+    completeness_rows = [
+        (
+            completeness_columns[0],
+            "Requirement",
+            role_completeness
+            .requirement_candidate_count,
+            role_completeness
+            .requirement_established,
+        ),
+        (
+            completeness_columns[1],
+            "Verification",
+            role_completeness
+            .verification_candidate_count,
+            role_completeness
+            .verification_established,
+        ),
+        (
+            completeness_columns[2],
+            "Observed Evidence",
+            role_completeness
+            .feasible_candidate_count,
+            role_completeness
+            .feasible_established,
+        ),
+    ]
+
+    for (
+        column,
+        role_name,
+        candidate_count,
+        established,
+    ) in completeness_rows:
+        with column:
+            st.markdown(
+                f"**{role_name}**"
+            )
+
+            if candidate_count > 0:
+                st.caption(
+                    "Candidate · FOUND · "
+                    + str(candidate_count)
+                )
+            else:
+                st.caption(
+                    "Candidate · NOT FOUND"
+                )
+
+            if established:
+                st.success(
+                    "ESTABLISHED ✓"
+                )
+            else:
+                st.warning(
+                    "NOT ESTABLISHED"
+                )
+
+    if role_set_ready:
         st.success(
-            "추출 결과 검토가 완료되었습니다."
+            "Role Set Complete ✓ · "
+            "Requirement / Verification / Observed Evidence가 "
+            "각각 선택되었습니다."
         )
 
+        st.caption(
+            "Role Set Complete는 Formalization Ready와 "
+            "다릅니다. 아래 Evidence Set Compatibility를 "
+            "통과해야 합니다."
+        )
     else:
-        st.info(
-            "모든 Semantic Candidate를 "
-            "검토하고 승인해야 다음 단계로 "
-            "진행할 수 있습니다."
+        st.warning(
+            "Formal Verification · BLOCKED"
         )
 
+        if not analysis_is_current:
+            st.caption(
+                "• Source changed after analysis."
+            )
+
+        for completeness_issue in (
+            role_completeness.issues
+        ):
+            st.caption(
+                "• " + completeness_issue
+            )
+
+
+    if role_set_ready:
+        render_review_focus(
+            "Evidence Set Compatibility",
+            (
+                "선택한 R / V / F가 같은 engineering variable을 "
+                "의미하는지 확인합니다."
+            ),
+        )
+
+        st.markdown("### Evidence Set Compatibility")
+
+        st.caption(
+            "선택된 R / V / F가 하나의 Formal Model에서 "
+            "서로 연결될 수 있는지 확인합니다."
+        )
+
+        compatibility_columns = st.columns(4)
+
+        with compatibility_columns[0]:
+            if role_alignment_ready:
+                st.success("Role Alignment · READY ✓")
+            else:
+                st.error("Role Alignment · BLOCKED")
+
+        with compatibility_columns[1]:
+            if source_provenance_ready:
+                st.success("Source Provenance · READY ✓")
+            else:
+                st.error("Source Provenance · BLOCKED")
+
+        with compatibility_columns[2]:
+            if unit_alignment_ready:
+                st.success("Unit Alignment · READY ✓")
+            else:
+                st.error("Unit Alignment · BLOCKED")
+
+        with compatibility_columns[3]:
+            if variable_alignment_ready:
+                st.success("Variable Alignment · READY ✓")
+            elif unit_alignment_ready:
+                st.warning(
+                    "Variable Alignment · REVIEW REQUIRED"
+                )
+            else:
+                st.error("Variable Alignment · BLOCKED")
+
+        st.markdown("#### 선택된 Evidence Set")
+
+        evidence_columns = st.columns(3)
+
+        with evidence_columns[0]:
+            st.markdown("**Requirement**")
+            st.write(
+                format_candidate_review_summary(
+                    (
+                        selected_requirement.extraction
+                        if selected_requirement
+                        else {}
+                    )
+                )
+            )
+
+        with evidence_columns[1]:
+            st.markdown("**Verification**")
+            st.write(
+                format_candidate_review_summary(
+                    (
+                        selected_verification.extraction
+                        if selected_verification
+                        else {}
+                    )
+                )
+            )
+
+        with evidence_columns[2]:
+            st.markdown("**Observed Evidence**")
+            st.write(
+                format_candidate_review_summary(
+                    (
+                        selected_feasible.extraction
+                        if selected_feasible
+                        else {}
+                    )
+                )
+            )
+
+        if not unit_alignment_ready:
+            st.error(
+                "선택된 R / V / F의 Engineering Unit이 "
+                "일치하지 않습니다."
+            )
+
+            st.caption(
+                "Requirement · "
+                + (requirement_unit or "UNIT MISSING")
+                + " | Verification · "
+                + (verification_unit or "UNIT MISSING")
+                + " | Observed Evidence · "
+                + (feasible_unit or "UNIT MISSING")
+            )
+
+            st.caption(
+                "단위 변환을 자동으로 가정하지 않습니다. "
+                "현재 조합을 다시 검토해 주세요."
+            )
+
+        elif exact_variable_alignment:
+            st.success(
+                "Variable Alignment · 문서의 변수 표현이 "
+                "동일한 source-variable group으로 연결됩니다."
+            )
+
+        else:
+            st.warning(
+                "Variable Alignment · Engineer confirmation required"
+            )
+
+            st.write(
+                "문서의 변수 이름이 완전히 동일하지 않습니다. "
+                "시스템은 이를 자동으로 같은 변수라고 확정하지 않습니다."
+            )
+
+            mapping_left, mapping_middle, mapping_right = (
+                st.columns(3)
+            )
+
+            mapping_left.metric(
+                "Requirement",
+                requirement_variable or "—",
+            )
+
+            mapping_middle.metric(
+                "Verification",
+                verification_variable or "—",
+            )
+
+            mapping_right.metric(
+                "Observed Evidence",
+                feasible_variable or "—",
+            )
+
+            st.caption(
+                "같은 Engineering Unit이라는 사실만으로 "
+                "같은 engineering variable이라고 판단하지 않습니다."
+            )
+
+            confirm_col, reject_col = st.columns(2)
+
+            with confirm_col:
+                confirm_mapping = st.button(
+                    "같은 engineering variable로 확인",
+                    type="primary",
+                    key="confirm_evidence_variable_mapping",
+                )
+
+            with reject_col:
+                reject_mapping = st.button(
+                    "다른 변수로 유지",
+                    key="reject_evidence_variable_mapping",
+                )
+
+            if confirm_mapping:
+                st.session_state[
+                    "engineer_variable_mapping_confirmed"
+                ] = True
+
+                st.session_state[
+                    "engineer_feasible_group_override"
+                ] = {
+                    (
+                        selected_feasible.candidate_id
+                        if selected_feasible
+                        else ""
+                    ): requirement_group_key
+                }
+
+                st.rerun()
+
+            if reject_mapping:
+                st.session_state[
+                    "engineer_variable_mapping_confirmed"
+                ] = False
+
+                st.session_state[
+                    "engineer_feasible_group_override"
+                ] = {}
+
+                st.rerun()
+
+            if engineer_variable_mapping_confirmed:
+                st.success(
+                    "Engineer Variable Mapping · CONFIRMED ✓"
+                )
+
+                st.caption(
+                    "이 확인은 선택된 Evidence Set에만 적용됩니다. "
+                    "R / V / F 선택이 바뀌면 자동으로 무효화됩니다."
+                )
+
+        st.markdown("#### Formalization Readiness")
+
+        if formalization_ready:
+            st.success(
+                "FORMALIZATION READY ✓ · "
+                "Role / Variable / Unit / Source checks passed."
+            )
+        else:
+            st.warning(
+                "FORMALIZATION NOT READY · "
+                "위 Compatibility 항목을 먼저 해결하세요."
+            )
 
     # =====================================================
     # STEP 3 — VARIABLE MAPPING + FEASIBLE DOMAIN
     # =====================================================
 
-    if all_semantics_approved:
+    if formalization_ready:
         st.divider()
 
-        st.header(
-            "3 · 검증 모델 및 검토 (Verification Model & Review)"
+        render_section_header(
+            "STAGE 03",
+            "Formal Review",
+            "승인된 engineering semantics와 source-bound feasible evidence를 검토해 Formal Verification Model을 구성합니다.",
+        )
+        render_soft_note(
+            "Variable mapping과 source provenance를 검토한 뒤 승인된 값만 deterministic verification으로 전달합니다."
         )
 
         st.caption(
@@ -1603,7 +5268,7 @@ if analysis is not None:
 
         targets = (
             build_variable_mapping_targets(
-                analysis
+                approved_analysis
             )
         )
 
@@ -1645,9 +5310,8 @@ if analysis is not None:
             )
 
         approved_feasible_ids = set(
-            st.session_state[
-                "feasible_approved_candidate_ids"
-            ]
+            role_completeness
+            .established_feasible_candidate_ids
         )
 
         feasible_binding_by_group = {}
@@ -1711,6 +5375,24 @@ if analysis is not None:
                         source_variable_f
                     )
                 )
+
+                engineer_group_override = (
+                    st.session_state.get(
+                        "engineer_feasible_group_override",
+                        {},
+                    )
+                )
+
+                overridden_group_key = (
+                    engineer_group_override.get(
+                        feasible_candidate.candidate_id
+                    )
+                )
+
+                if overridden_group_key:
+                    feasible_group_key = (
+                        overridden_group_key
+                    )
 
                 if (
                     feasible_group_key
@@ -2204,9 +5886,8 @@ if analysis is not None:
                 )
 
                 approved_feasible_ids = set(
-                    st.session_state[
-                        "feasible_approved_candidate_ids"
-                    ]
+                    role_completeness
+                    .established_feasible_candidate_ids
                 )
 
                 if (
@@ -2257,17 +5938,45 @@ if analysis is not None:
                                 "canonical_id"
                             ]
 
-                    feasible_prefill_result = (
-                        build_feasible_evidence_prefills(
+                    grounded_feasible_result = (
+                        build_grounded_feasible_evidence_prefills(
                             selected_feasible_analysis,
                             approved_candidate_ids=sorted(
                                 approved_feasible_ids
+                            ),
+                            grounding_by_candidate_id=(
+                                feasible_role_grounding
                             ),
                             canonical_variable_by_candidate=(
                                 canonical_variable_by_candidate
                             ),
                         )
                     )
+
+                    if (
+                        grounded_feasible_result
+                        .grounding_blocked
+                    ):
+                        raise ValueError(
+                            "Feasible Evidence Role Grounding "
+                            "blocked formalization: "
+                            + "; ".join(
+                                grounded_feasible_result
+                                .grounding_gate
+                                .issues
+                            )
+                        )
+
+                    feasible_prefill_result = (
+                        grounded_feasible_result
+                        .downstream_result
+                    )
+
+                    if feasible_prefill_result is None:
+                        raise ValueError(
+                            "Grounded Feasible Evidence "
+                            "prefill produced no downstream result."
+                        )
 
                     prepared_feasible_evidence_traces = [
                         build_feasible_evidence_trace(prefill)
@@ -2436,7 +6145,8 @@ if analysis is not None:
 
                 mapped_analysis = (
                     apply_analysis_variable_mappings(
-                        analysis,
+                    approved_analysis,
+
                         mappings_by_candidate,
                     )
                 )
@@ -2577,9 +6287,9 @@ if analysis is not None:
 # source-page review, F approval/source review, or stale input.
 if (
     analysis is not None
-    and "all_semantics_approved" in locals()
+    and role_completeness is not None
     and (
-        not all_semantics_approved
+        not formalization_ready
         or (
             st.session_state[
                 "prepared_semantic_review_signature"
@@ -2809,21 +6519,49 @@ if (
 if (
     mapped_analysis is not None
     and base_case is not None
+    and role_completeness is not None
+    and formalization_ready
 ):
+    established_semantic_id_set = set(
+        role_completeness
+        .established_semantic_candidate_ids
+    )
+
     approved_ids = [
         candidate.candidate_id
         for candidate
         in mapped_analysis.candidates
+        if candidate.candidate_id
+        in established_semantic_id_set
     ]
 
     try:
-        formal_ingress = (
-            apply_semantic_approvals(
+        grounded_semantic_result = (
+            apply_grounded_semantic_approvals(
                 base_case,
                 mapped_analysis,
                 approved_ids,
+                semantic_role_grounding,
             )
         )
+
+        if grounded_semantic_result.grounding_blocked:
+            formal_ingress = None
+
+            for grounding_issue in (
+                grounded_semantic_result
+                .grounding_gate
+                .issues
+            ):
+                st.error(
+                    "Role Grounding blocked · "
+                    + grounding_issue
+                )
+        else:
+            formal_ingress = (
+                grounded_semantic_result
+                .downstream_result
+            )
 
     except Exception as exc:
         formal_ingress = None
@@ -3106,8 +6844,13 @@ verification_result = st.session_state[
 if verification_result is not None:
     st.divider()
 
-    st.header(
-        "4 · 검증 결과 (Verification Result)"
+    render_section_header(
+        "STAGE 04",
+        "Verification Result",
+        "검토가 완료된 Formal Model에 대해 deterministic solver가 Verification Escape 여부와 witness를 판정합니다.",
+    )
+    render_soft_note(
+        "AI가 결과를 결정하지 않습니다. 최종 판정은 승인된 Formal Model을 입력으로 하는 deterministic verification 결과입니다."
     )
 
     st.caption(

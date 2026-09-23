@@ -230,21 +230,44 @@ def _default_extractor(
     source_name: str,
 ) -> list[dict[str, Any]]:
     """
-    실제 AI parser는 필요한 순간에만 import한다.
+    Run the production AI parser through a persistent,
+    content-addressed extraction cache.
 
-    이렇게 하면 Application Layer 자체를 import하거나
-    deterministic unit test를 실행하는 것만으로
-    AI API 호출이 발생하지 않는다.
+    The cache stores AI extraction candidates only.
+    Downstream Role Grounding, Engineer Approval,
+    Formalization, and deterministic verification remain live.
     """
 
-    from src.ai.multi_constraint_parser import (
-        extract_constraints_from_document,
+    from src.ai import (
+        multi_constraint_parser,
+        numeric_normalizer,
+    )
+    from src.ai.semantic_extraction_cache import (
+        cached_semantic_extraction,
     )
 
-    return extract_constraints_from_document(
-        text,
-        role,
-        source_name,
+    implementation_files = (
+        multi_constraint_parser.__file__,
+        numeric_normalizer.__file__,
+    )
+
+    return cached_semantic_extraction(
+        namespace="rv_constraint_extraction",
+        text=text,
+        role=role,
+        source_name=source_name,
+        model="gpt-5.6-terra",
+        implementation_files=(
+            implementation_files
+        ),
+        compute=lambda: (
+            multi_constraint_parser
+            .extract_constraints_from_document(
+                text,
+                role,
+                source_name,
+            )
+        ),
     )
 
 
@@ -516,6 +539,7 @@ def analyze_semantic_documents(
     ],
     *,
     extractor: SemanticExtractor | None = None,
+    max_workers: int = 1,
 ) -> SemanticAnalysisResult:
     """
     Document → AI Candidate 분석 단계.
@@ -544,10 +568,12 @@ def analyze_semantic_documents(
         else _default_extractor
     )
 
-    candidates: list[
-        SemanticCandidate
-    ] = []
+    if max_workers < 1:
+        raise ValueError(
+            "max_workers must be at least 1."
+        )
 
+    # Validate all roles before any AI call begins.
     for document in document_list:
         if document.role not in {
             "requirement",
@@ -558,12 +584,48 @@ def analyze_semantic_documents(
                 "requirement 또는 verification이어야 합니다."
             )
 
-        extractions = selected_extractor(
+    def extract_one(document):
+        return selected_extractor(
             document.text,
             document.role,
             document.source_name,
         )
 
+    if (
+        max_workers == 1
+        or len(document_list) < 2
+    ):
+        extraction_batches = [
+            extract_one(document)
+            for document in document_list
+        ]
+    else:
+        from concurrent.futures import (
+            ThreadPoolExecutor,
+        )
+
+        with ThreadPoolExecutor(
+            max_workers=min(
+                max_workers,
+                len(document_list),
+            )
+        ) as executor:
+            # executor.map preserves input/result ordering.
+            extraction_batches = list(
+                executor.map(
+                    extract_one,
+                    document_list,
+                )
+            )
+
+    candidates: list[
+        SemanticCandidate
+    ] = []
+
+    for document, extractions in zip(
+        document_list,
+        extraction_batches,
+    ):
         for index, extraction in enumerate(
             extractions,
             start=1,

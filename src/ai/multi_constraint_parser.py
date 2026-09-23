@@ -540,6 +540,85 @@ def normalize_constraint(
 
 
 # =========================================================
+# ROLE-SPECIFIC DISCOVERY LENS
+# =========================================================
+
+def build_constraint_role_directive(
+    constraint_role: str,
+) -> str:
+    """
+    Narrow candidate discovery to the proposed engineering role.
+
+    This does not establish role truth.
+    Role Grounding + Engineer Review remain downstream gates.
+    """
+
+    if constraint_role == "requirement":
+        return """
+현재 Proposed Role Lens는 REQUIREMENT 입니다.
+
+Requirement 후보만 추출하십시오.
+
+Requirement 후보란:
+- 설계/기술/제품이 만족해야 하는 명시적 normative condition
+- shall, must, required, specification, tolerance 등
+  의무 또는 허용범위를 나타내는 조건
+- source text 자체가 engineering requirement임을
+  뒷받침하는 numeric constraint
+
+다음은 Requirement로 자동 간주하지 마십시오:
+- 단순 측정값 또는 관측 결과
+- 시험 결과
+- inspection / verification / acceptance pass-fail 기준
+- target / nominal / recommendation
+- 장비 capability
+- 단순 operating/control/alarm limit
+- 설명을 위한 숫자
+
+Requirement인지 애매하지만 원문에 normative 의미가
+일부 존재한다면 candidate로 남길 수 있으나
+needs_review=true로 설정하십시오.
+
+단순히 숫자가 있다는 이유만으로 후보를 만들지 마십시오.
+"""
+
+    if constraint_role == "verification":
+        return """
+현재 Proposed Role Lens는 VERIFICATION 입니다.
+
+Verification 후보만 추출하십시오.
+
+Verification 후보란:
+- inspection / test / verification / quality-control /
+  acceptance 과정에서 합격·불합격 또는 적합성 판정에
+  실제로 사용되는 명시적 numeric criterion
+- source text 자체가 검사·시험·검증 기준임을
+  뒷받침하는 조건
+
+다음은 Verification Criterion으로 자동 간주하지 마십시오:
+- 설계 Requirement 자체
+- 단순 측정값 또는 관측 결과
+- target / nominal / recommendation
+- 일반 operating/control/alarm limit
+- 장비 capability 또는 measurement range
+- 단순히 시험 문서 안에 등장한 숫자
+
+Requirement와 Verification Criterion은 서로 자동으로
+동일하다고 간주하지 마십시오.
+
+Verification 역할이 애매하지만 원문에 inspection /
+test / acceptance 의미가 일부 존재한다면 candidate로
+남길 수 있으나 needs_review=true로 설정하십시오.
+
+단순히 숫자가 있다는 이유만으로 후보를 만들지 마십시오.
+"""
+
+    raise ValueError(
+        "constraint_role must be requirement or verification."
+    )
+
+
+# =========================================================
 # MULTI-CONSTRAINT EXTRACTION
 # =========================================================
 
@@ -575,7 +654,15 @@ def extract_constraints_from_document(
 
         return []
 
-    system_prompt = """
+    role_directive = (
+        build_constraint_role_directive(
+            constraint_role
+        )
+    )
+
+    system_prompt = f"""
+{role_directive}
+
 당신은 Engineering Document Constraint Extraction 도구입니다.
 
 입력에는 L1, L2, L3 등의 ID가 붙은
