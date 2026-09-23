@@ -1079,10 +1079,42 @@ if ford_mode:
             )
         )
 
-        if remaining_vision_pages > 0:
-            with st.container(border=True):
+        if remaining_vision_pages <= 0:
+            st.caption(
+                "Deep Vision 지원 · 텍스트만으로 근거가 충분하지 않은 경우 "
+                "이미지 기반 분석으로 문서 근거를 보완할 수 있습니다."
+            )
+
+            with st.expander(
+                "Advanced · Optional Re-analysis",
+                expanded=False,
+            ):
                 st.markdown(
-                    "##### 전체 페이지 분석 · Deep Vision"
+                    "##### 원본 문서 Deep Vision 재분석"
+                )
+                st.info(
+                    "현재 등록된 Ford reference source에는 "
+                    "추가 Deep Vision 분석이 필요한 후보 페이지가 없습니다."
+                )
+                st.caption(
+                    "Deep Vision 기능은 지원되지만, "
+                    "Validated Case 결과를 확인하기 위해 "
+                    "추가 재분석을 수행할 필요는 없습니다."
+                )
+
+        if remaining_vision_pages > 0:
+            st.caption(
+                "Deep Vision 지원 · 텍스트만으로 근거가 충분하지 않은 경우 "
+                f"{remaining_vision_pages}개 후보 페이지를 이미지 기반으로 "
+                "추가 분석할 수 있습니다."
+            )
+
+            with st.expander(
+                "Advanced · Optional Re-analysis",
+                expanded=False,
+            ):
+                st.markdown(
+                    "##### 원본 문서 Deep Vision 재분석"
                 )
 
                 st.caption(
@@ -1090,11 +1122,13 @@ if ford_mode:
                     "추가 이미지 분석이 가능합니다. "
                     "동일한 원본 PDF는 한 번만 처리하고, "
                     "결과를 Requirement · Verification · "
-                    "Observed Evidence 분석에 재사용합니다."
+                    "Observed Evidence 분석에 재사용합니다. "
+                    "이 기능은 원본 문서를 다시 분석하기 위한 선택 기능이며, "
+                    "Validated Case 결과를 확인하는 데에는 필요하지 않습니다."
                 )
 
                 if st.button(
-                    "전체 페이지 분석 시작",
+                    "Optional · 전체 페이지 Deep Vision 재분석",
                     key="run_deep_vision_source_set",
                     type="secondary",
                     use_container_width=True,
@@ -2321,22 +2355,83 @@ AND NOT R(H)""",
     )
 
     with conclusion_left:
-        with st.container(border=True):
-            st.markdown("**Final Result**")
-            st.success("VERIFICATION ESCAPE FOUND")
+        st.markdown(
+            """
+            <div style="
+                border:1px solid rgba(120,140,165,0.28);
+                border-radius:14px;
+                padding:18px 20px;
+                min-height:118px;
+                background:rgba(255,255,255,0.58);
+            ">
+                <div style="
+                    font-size:0.85rem;
+                    font-weight:700;
+                    color:#64748b;
+                    margin-bottom:18px;
+                ">Final Result</div>
+                <div style="
+                    font-size:1.08rem;
+                    font-weight:700;
+                    color:#14233b;
+                    line-height:1.35;
+                ">VERIFICATION ESCAPE FOUND</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with conclusion_middle:
-        with st.container(border=True):
-            st.markdown("**Solver Witness**")
-            st.metric(
-                "H",
-                "60 HRC",
-            )
+        st.markdown(
+            """
+            <div style="
+                border:1px solid rgba(120,140,165,0.28);
+                border-radius:14px;
+                padding:18px 20px;
+                min-height:118px;
+                background:rgba(255,255,255,0.58);
+            ">
+                <div style="
+                    font-size:0.85rem;
+                    font-weight:700;
+                    color:#64748b;
+                    margin-bottom:18px;
+                ">Solver Witness</div>
+                <div style="
+                    font-size:1.08rem;
+                    font-weight:700;
+                    color:#14233b;
+                ">H = 60 HRC</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with conclusion_right:
-        with st.container(border=True):
-            st.markdown("**Evidence Basis**")
-            st.success("SOURCE-BACKED")
+        st.markdown(
+            """
+            <div style="
+                border:1px solid rgba(120,140,165,0.28);
+                border-radius:14px;
+                padding:18px 20px;
+                min-height:118px;
+                background:rgba(255,255,255,0.58);
+            ">
+                <div style="
+                    font-size:0.85rem;
+                    font-weight:700;
+                    color:#64748b;
+                    margin-bottom:18px;
+                ">Evidence Basis</div>
+                <div style="
+                    font-size:1.08rem;
+                    font-weight:700;
+                    color:#14233b;
+                ">SOURCE-BACKED</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.markdown("#### Why the escape exists")
 
