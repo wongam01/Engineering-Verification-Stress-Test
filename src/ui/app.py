@@ -1360,7 +1360,101 @@ if ford_mode:
 
 
 if ford_mode:
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stCaptionContainer"] p {
+            font-size: 0.94rem !important;
+            line-height: 1.62 !important;
+            font-weight: 500 !important;
+            color: #60758d !important;
+        }
+
+        div[data-testid="stCaptionContainer"] {
+            opacity: 1 !important;
+        }
+
+        button[data-baseweb="tab"] {
+            color: #435a72 !important;
+            opacity: 1 !important;
+        }
+
+        button[data-baseweb="tab"] p,
+        button[data-baseweb="tab"] span {
+            color: inherit !important;
+            font-weight: 650 !important;
+            opacity: 1 !important;
+        }
+
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #d94d4d !important;
+        }
+
+        button[data-baseweb="tab"]:hover {
+            color: #263d55 !important;
+        }
+
+        div[data-testid="stSelectbox"] label p {
+            color: #526a82 !important;
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            opacity: 1 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.divider()
+
+    st.markdown(
+        """
+        <style>
+        /* Ford evidence tabs: inactive labels must remain readable */
+        div[data-baseweb="tab-list"] button[role="tab"] {
+            color: #445f79 !important;
+            opacity: 1 !important;
+            font-weight: 650 !important;
+        }
+
+        div[data-baseweb="tab-list"] button[role="tab"] * {
+            color: inherit !important;
+            opacity: 1 !important;
+            font-weight: inherit !important;
+        }
+
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="false"] {
+            color: #445f79 !important;
+            opacity: 1 !important;
+        }
+
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="false"] * {
+            color: #445f79 !important;
+            opacity: 1 !important;
+        }
+
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="true"] {
+            color: #d84d4d !important;
+            opacity: 1 !important;
+        }
+
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="true"] * {
+            color: #d84d4d !important;
+            opacity: 1 !important;
+        }
+
+        div[data-baseweb="tab-list"]
+        button[role="tab"]:hover {
+            color: #253f59 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     render_review_focus(
         "Validated Execution Walkthrough",
@@ -1379,6 +1473,58 @@ if ford_mode:
         "제품이 실제로 수행하는 Source → AI Semantic Bridge → Human Review → "
         "Formalization → Solver 구조를 그대로 보여줍니다."
     )
+
+    with st.expander(
+        "원본 공개 문서 확인 / 다운로드 · 4 PDFs",
+        expanded=False,
+    ):
+        st.caption(
+            "Ford reference case에 사용된 실제 공개 원본 PDF입니다. "
+            "파일명과 SHA-256을 확인하고 원본 전체 파일을 직접 내려받을 수 있습니다."
+        )
+
+        for source_index, source in enumerate(
+            ford_sources,
+            start=1,
+        ):
+            with st.container(border=True):
+                source_left, source_right = st.columns(
+                    [3.0, 1.0]
+                )
+
+                with source_left:
+                    st.markdown(
+                        "**"
+                        + f"{source_index:02d} · "
+                        + source.filename
+                        + "**"
+                    )
+
+                    st.caption(
+                        "SHA-256 · "
+                        + source.sha256
+                    )
+
+                with source_right:
+                    st.download_button(
+                        "원본 PDF 다운로드",
+                        data=source.content,
+                        file_name=source.filename,
+                        mime="application/pdf",
+                        key=(
+                            "ford_original_download_"
+                            + safe_key(
+                                source.filename
+                                + source.sha256
+                            )
+                        ),
+                        use_container_width=True,
+                    )
+
+        st.caption(
+            "다운로드한 파일의 SHA-256은 위 표시값과 비교하여 "
+            "reference source identity를 확인할 수 있습니다."
+        )
 
     st.markdown("### 1. EVST Processing Pipeline")
 
@@ -1450,104 +1596,10 @@ if ford_mode:
     st.markdown("### 2. Validated Engineering Evidence Chain")
 
     st.caption(
-        "아래 R / V / F는 검증된 Ford reference case에서 Formal Model로 "
-        "연결된 evidence chain입니다. 각 카드에서 실제 공개 원본 PDF의 "
-        "근거 페이지를 직접 확인할 수 있습니다."
+        "검증된 Ford reference case에서 Formal Model로 연결된 "
+        "Requirement / Verification / Observed Evidence입니다. "
+        "각 값은 실제 공개 원본 문서의 source page와 연결되어 있습니다."
     )
-
-    def render_ford_reference_page(
-        *,
-        filename,
-        role,
-        page_number,
-        support_text,
-        preview_key,
-    ):
-        source = next(
-            (
-                item
-                for item in ford_sources
-                if item.filename == filename
-            ),
-            None,
-        )
-
-        if source is None:
-            st.error(
-                "Reference source not found · "
-                + filename
-            )
-            return
-
-        pdf_document = source_pdfs.get(
-            (
-                role,
-                source.sha256,
-            )
-        )
-
-        if pdf_document is None:
-            pdf_document = ingest_pdf_document(
-                role=role,
-                filename=source.filename,
-                content=source.content,
-            )
-
-        st.caption(
-            filename
-            + " · Page "
-            + str(page_number)
-        )
-
-        st.write(support_text)
-
-        try:
-            st.pdf(
-                build_pdf_page_preview(
-                    pdf_document,
-                    page_number,
-                ),
-                height=430,
-                key=preview_key,
-            )
-        except Exception as exc:
-            st.error(
-                "PDF page preview failed: "
-                + str(exc)
-            )
-
-        page_record = pdf_document.page(
-            page_number
-        )
-
-        if (
-            page_record is not None
-            and str(
-                getattr(
-                    page_record,
-                    "text",
-                    "",
-                )
-                or ""
-            ).strip()
-        ):
-            with st.expander(
-                "추출된 페이지 텍스트",
-                expanded=False,
-            ):
-                st.write(
-                    page_record.text
-                )
-
-        with st.expander(
-            "Source identity",
-            expanded=False,
-        ):
-            st.caption(
-                "SHA-256 · "
-                + source.sha256
-            )
-
 
     evidence_r, evidence_v, evidence_f = st.columns(3)
 
@@ -1555,215 +1607,581 @@ if ford_mode:
         with st.container(border=True):
             st.markdown("#### Requirement · R")
 
-            st.markdown(
-                "**Engineering variable**"
-            )
-            st.write(
-                "Intake-valve tip hardness"
-            )
+            st.markdown("**Engineering variable**")
+            st.write("Intake-valve tip hardness")
 
-            st.markdown(
-                "**Extracted constraint**"
-            )
             st.metric(
                 "Requirement",
                 "50–57 HRC",
             )
 
-            st.markdown(
-                "**Role status**"
-            )
             st.success(
                 "VALIDATED · Engineering Requirement"
+            )
+
+            st.markdown("**Primary source**")
+            st.caption(
+                "INRD-EA23002-13504P1.pdf · Page 6"
+            )
+
+            st.markdown("**Corroborating source**")
+            st.caption(
+                "INRD-EA23002-13508P1.pdf · Page 4"
             )
 
             st.caption(
                 "Source-linked evidence · Engineer-reviewed"
             )
-
-            with st.expander(
-                "실제 원문 근거 확인",
-                expanded=False,
-            ):
-                render_ford_reference_page(
-                    filename=(
-                        "INRD-EA23002-13504P1.pdf"
-                    ),
-                    role="requirement",
-                    page_number=6,
-                    support_text=(
-                        "이 페이지는 JT4E-6507-AB의 "
-                        "tip-hardness specification이 "
-                        "기존 50 MIN에서 2020년 10월 "
-                        "50–57 HRC로 변경된 engineering "
-                        "requirement chronology를 뒷받침합니다."
-                    ),
-                    preview_key="ford_reference_r_page_6",
-                )
-
-                st.markdown(
-                    "**Corroborating drawing evidence**"
-                )
-
-                render_ford_reference_page(
-                    filename=(
-                        "INRD-EA23002-13508P1.pdf"
-                    ),
-                    role="requirement",
-                    page_number=4,
-                    support_text=(
-                        "Ford Central Laboratory report는 "
-                        "해당 hardened region의 drawing "
-                        "specification 50–57 HRC를 함께 기록합니다."
-                    ),
-                    preview_key="ford_reference_r_page_4",
-                )
 
     with evidence_v:
         with st.container(border=True):
             st.markdown("#### Verification · V")
 
-            st.markdown(
-                "**Engineering variable**"
-            )
-            st.write(
-                "Tip hardness acceptance criterion"
-            )
+            st.markdown("**Engineering variable**")
+            st.write("Tip hardness acceptance criterion")
 
-            st.markdown(
-                "**Extracted constraint**"
-            )
             st.metric(
                 "Historical criterion",
                 "≥ 50 HRC",
             )
 
-            st.markdown(
-                "**Role status**"
-            )
             st.success(
                 "VALIDATED · Historical Verification"
+            )
+
+            st.markdown("**Primary source**")
+            st.caption(
+                "INRL-EA23002-13503.pdf · Page 2"
+            )
+
+            st.markdown("**Control chronology**")
+            st.caption(
+                "INRL-EA23002-13503.pdf · Page 5"
             )
 
             st.caption(
                 "Source-linked evidence · Engineer-reviewed"
             )
 
-            with st.expander(
-                "실제 원문 근거 확인",
-                expanded=False,
-            ):
-                render_ford_reference_page(
-                    filename=(
-                        "INRL-EA23002-13503.pdf"
-                    ),
-                    role="verification",
-                    page_number=2,
-                    support_text=(
-                        "Historical SCCAF는 Tip Hardness "
-                        "50 min HRC와 Rockwell hardness "
-                        "inspection / sampling control을 기록합니다."
-                    ),
-                    preview_key="ford_reference_v_page_2",
-                )
-
-                st.markdown(
-                    "**Verification-control chronology**"
-                )
-
-                render_ford_reference_page(
-                    filename=(
-                        "INRL-EA23002-13503.pdf"
-                    ),
-                    role="verification",
-                    page_number=5,
-                    support_text=(
-                        "Ford 기록에 따르면 SCCAF에는 "
-                        "2021-09-07까지 valve tip hardness의 "
-                        "upper tolerance limit가 상세히 "
-                        "반영되지 않았습니다."
-                    ),
-                    preview_key="ford_reference_v_page_5",
-                )
-
     with evidence_f:
         with st.container(border=True):
-            st.markdown(
-                "#### Observed Evidence · F"
-            )
+            st.markdown("#### Observed Evidence · F")
 
-            st.markdown(
-                "**Engineering variable**"
-            )
-            st.write(
-                "Measured intake-valve tip hardness"
-            )
+            st.markdown("**Engineering variable**")
+            st.write("Measured intake-valve hardness")
 
-            st.markdown(
-                "**Observed evidence envelope**"
-            )
             st.metric(
                 "Observed evidence",
                 "58–60 HRC",
             )
 
-            st.markdown(
-                "**Role status**"
-            )
             st.success(
                 "VALIDATED · Observed Evidence"
             )
 
+            st.markdown("**Primary source**")
             st.caption(
-                "Field-failure hardware evidence · "
+                "INRD-EA23002-13508P1.pdf · Page 4"
+            )
+
+            st.markdown("**Corroborating source**")
+            st.caption(
+                "INRD-EA23002-13506.pdf · Page 1"
+            )
+
+            st.caption(
+                "Observed evidence envelope · "
                 "not the full manufacturing domain"
             )
 
+
+    ford_reference_pages = {
+        "Requirement": [
+            {
+                "label": (
+                    "Requirement change chronology · "
+                    "INRD-EA23002-13504P1.pdf · Page 6"
+                ),
+                "filename": "INRD-EA23002-13504P1.pdf",
+                "role": "requirement",
+                "page": 6,
+                "support": (
+                    "JT4E-6507-AB의 tip-hardness specification이 "
+                    "기존 50 MIN에서 2020년 10월 "
+                    "50–57 HRC로 변경된 engineering "
+                    "requirement chronology를 뒷받침합니다."
+                ),
+            },
+            {
+                "label": (
+                    "Drawing specification corroboration · "
+                    "INRD-EA23002-13508P1.pdf · Page 4"
+                ),
+                "filename": "INRD-EA23002-13508P1.pdf",
+                "role": "requirement",
+                "page": 4,
+                "support": (
+                    "Ford Central Laboratory report에서 "
+                    "해당 hardened region의 drawing "
+                    "specification 50–57 HRC를 확인합니다."
+                ),
+            },
+        ],
+        "Verification": [
+            {
+                "label": (
+                    "Historical SCCAF criterion · "
+                    "INRL-EA23002-13503.pdf · Page 2"
+                ),
+                "filename": "INRL-EA23002-13503.pdf",
+                "role": "verification",
+                "page": 2,
+                "support": (
+                    "Historical SCCAF의 Tip Hardness "
+                    "50 min HRC criterion과 Rockwell hardness "
+                    "inspection / sampling control을 확인합니다."
+                ),
+            },
+            {
+                "label": (
+                    "Upper-tolerance chronology · "
+                    "INRL-EA23002-13503.pdf · Page 5"
+                ),
+                "filename": "INRL-EA23002-13503.pdf",
+                "role": "verification",
+                "page": 5,
+                "support": (
+                    "Ford 기록에서 SCCAF가 2021-09-07까지 "
+                    "valve tip hardness upper tolerance를 "
+                    "상세히 반영하지 않았던 chronology를 확인합니다."
+                ),
+            },
+        ],
+        "Observed Evidence": [
+            {
+                "label": (
+                    "Central Lab measured hardness · "
+                    "INRD-EA23002-13508P1.pdf · Page 4"
+                ),
+                "filename": "INRD-EA23002-13508P1.pdf",
+                "role": "feasible",
+                "page": 4,
+                "support": (
+                    "Intake Valve 10의 실제 측정값 가운데 "
+                    "58, 59, 60 HRC가 포함되고, "
+                    "57 HRC upper specification을 초과한 "
+                    "값이 표시된 source evidence입니다."
+                ),
+            },
+            {
+                "label": (
+                    "Field-failure corroboration · "
+                    "INRD-EA23002-13506.pdf · Page 1"
+                ),
+                "filename": "INRD-EA23002-13506.pdf",
+                "role": "feasible",
+                "page": 1,
+                "support": (
+                    "별도의 Eaton 8D record에서도 "
+                    "keeper-groove region의 field-failure "
+                    "valves에서 58–60 HRC 수준의 hardness가 "
+                    "보고된 것을 확인합니다."
+                ),
+            },
+        ],
+    }
+
+
+    def render_ford_full_width_source_preview(
+        evidence,
+        key_prefix,
+    ):
+        source = next(
+            (
+                item
+                for item in ford_sources
+                if item.filename == evidence["filename"]
+            ),
+            None,
+        )
+
+        if source is None:
+            st.error(
+                "Reference source not found · "
+                + evidence["filename"]
+            )
+            return
+
+        pdf_document = source_pdfs.get(
+            (
+                evidence["role"],
+                source.sha256,
+            )
+        )
+
+        if pdf_document is None:
+            pdf_document = ingest_pdf_document(
+                role=evidence["role"],
+                filename=source.filename,
+                content=source.content,
+            )
+
+        meta_left, meta_middle, meta_right = st.columns(
+            [1.0, 2.3, 0.7]
+        )
+
+        meta_left.metric(
+            "Evidence Role",
+            key_prefix,
+        )
+
+        meta_middle.caption(
+            "Source document"
+        )
+
+        meta_middle.markdown(
+            "**"
+            + evidence["filename"]
+            + "**"
+        )
+
+        meta_right.metric(
+            "Page",
+            evidence["page"],
+        )
+
+        st.info(
+            evidence["support"]
+        )
+
+        try:
+            st.pdf(
+                build_pdf_page_preview(
+                    pdf_document,
+                    evidence["page"],
+                ),
+                height=850,
+                key=(
+                    "ford_full_width_source_"
+                    + safe_key(
+                        key_prefix
+                        + ":"
+                        + evidence["filename"]
+                        + ":"
+                        + str(evidence["page"])
+                    )
+                ),
+            )
+        except Exception as exc:
+            st.error(
+                "PDF page preview failed: "
+                + str(exc)
+            )
+
+        detail_left, detail_right = st.columns(2)
+
+        page_record = pdf_document.page(
+            evidence["page"]
+        )
+
+        with detail_left:
             with st.expander(
-                "실제 원문 근거 확인",
+                "추출된 페이지 텍스트",
                 expanded=False,
             ):
-                render_ford_reference_page(
-                    filename=(
-                        "INRD-EA23002-13508P1.pdf"
-                    ),
-                    role="feasible",
-                    page_number=4,
-                    support_text=(
-                        "Ford Central Laboratory report의 "
-                        "Intake Valve 10 측정값에는 "
-                        "58, 59, 60 HRC가 포함되며 "
-                        "57 HRC upper specification을 "
-                        "초과한 값이 표시되어 있습니다."
-                    ),
-                    preview_key="ford_reference_f_page_4",
+                if (
+                    page_record is not None
+                    and str(
+                        getattr(
+                            page_record,
+                            "text",
+                            "",
+                        )
+                        or ""
+                    ).strip()
+                ):
+                    st.write(
+                        page_record.text
+                    )
+                else:
+                    st.caption(
+                        "이 페이지는 image-based source이며 "
+                        "텍스트는 Vision recovery 경로에서 처리됩니다."
+                    )
+
+        with detail_right:
+            with st.expander(
+                "Source identity",
+                expanded=False,
+            ):
+                st.caption(
+                    "SHA-256 · "
+                    + source.sha256
+                )
+                st.caption(
+                    "Immutable source page · Page "
+                    + str(evidence["page"])
                 )
 
-                st.markdown(
-                    "**Independent field-failure corroboration**"
+
+    st.markdown("### 2.1 Evidence Source Preview")
+
+    st.caption(
+        "R / V / F를 구성한 실제 공개 원문 페이지를 역할별로 확인합니다. "
+        "Ford reference evidence는 하나의 PDF가 아니라 여러 engineering "
+        "records에 분산되어 있으므로, primary source와 corroborating source를 "
+        "함께 표시합니다."
+    )
+
+    st.markdown(
+        """
+        <style>
+        /* EVST Ford evidence tabs — force readable inactive labels */
+
+        div[data-baseweb="tab-list"] button[role="tab"] {
+            opacity: 1 !important;
+            background: transparent !important;
+        }
+
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="false"],
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="false"] *,
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="false"] p,
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="false"] span,
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="false"] div {
+            color: #34495e !important;
+            -webkit-text-fill-color: #34495e !important;
+            opacity: 1 !important;
+            font-weight: 650 !important;
+        }
+
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="true"],
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="true"] *,
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="true"] p,
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="true"] span,
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="true"] div {
+            color: #e44747 !important;
+            -webkit-text-fill-color: #e44747 !important;
+            opacity: 1 !important;
+            font-weight: 700 !important;
+        }
+
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="false"]:hover,
+        div[data-baseweb="tab-list"]
+        button[role="tab"][aria-selected="false"]:hover * {
+            color: #172b3f !important;
+            -webkit-text-fill-color: #172b3f !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if (
+        "ford_source_role_view"
+        not in st.session_state
+    ):
+        st.session_state[
+            "ford_source_role_view"
+        ] = "Requirement"
+
+    source_nav_r, source_nav_v, source_nav_f = st.columns(3)
+
+    with source_nav_r:
+        if st.button(
+            "Requirement Sources",
+            use_container_width=True,
+            type=(
+                "primary"
+                if st.session_state[
+                    "ford_source_role_view"
+                ]
+                == "Requirement"
+                else "secondary"
+            ),
+            key="ford_source_nav_requirement",
+        ):
+            st.session_state[
+                "ford_source_role_view"
+            ] = "Requirement"
+            st.rerun()
+
+    with source_nav_v:
+        if st.button(
+            "Verification Sources",
+            use_container_width=True,
+            type=(
+                "primary"
+                if st.session_state[
+                    "ford_source_role_view"
+                ]
+                == "Verification"
+                else "secondary"
+            ),
+            key="ford_source_nav_verification",
+        ):
+            st.session_state[
+                "ford_source_role_view"
+            ] = "Verification"
+            st.rerun()
+
+    with source_nav_f:
+        if st.button(
+            "Observed Evidence Sources",
+            use_container_width=True,
+            type=(
+                "primary"
+                if st.session_state[
+                    "ford_source_role_view"
+                ]
+                == "Observed Evidence"
+                else "secondary"
+            ),
+            key="ford_source_nav_observed",
+        ):
+            st.session_state[
+                "ford_source_role_view"
+            ] = "Observed Evidence"
+            st.rerun()
+
+
+    def render_ford_source_gallery(
+        role_name,
+        evidence_items,
+    ):
+        st.markdown(
+            "#### "
+            + role_name
+            + " Source Evidence"
+        )
+
+        st.caption(
+            role_name
+            + " · "
+            + str(len(evidence_items))
+            + " source pages"
+        )
+
+        for index, evidence in enumerate(
+            evidence_items,
+            start=1,
+        ):
+            with st.expander(
+                (
+                    f"{index:02d} · "
+                    + evidence["label"]
+                ),
+                expanded=True,
+            ):
+                render_ford_full_width_source_preview(
+                    evidence,
+                    role_name,
                 )
 
-                render_ford_reference_page(
-                    filename=(
-                        "INRD-EA23002-13506.pdf"
-                    ),
-                    role="feasible",
-                    page_number=1,
-                    support_text=(
-                        "별도의 Eaton 8D record에서도 "
-                        "keeper-groove region의 field-failure "
-                        "valves에서 58–60 HRC 수준의 hardness가 "
-                        "보고되었습니다."
-                    ),
-                    preview_key="ford_reference_f_page_1",
-                )
 
-    st.info(
-        "Evidence chain의 값은 화면에 임의로 입력한 숫자가 아니라 "
-        "위 실제 source pages와 연결된 frozen reference evidence입니다. "
-        "Ford 화면은 이 검증된 provenance를 설명하고, "
-        "Generic Product Path에서는 새로운 PDF에 동일한 "
-        "evidence-discovery pipeline을 실행합니다."
+    selected_source_role = st.session_state[
+        "ford_source_role_view"
+    ]
+
+    if selected_source_role == "Requirement":
+        render_ford_source_gallery(
+            "Requirement",
+            ford_reference_pages[
+                "Requirement"
+            ],
+        )
+
+    elif selected_source_role == "Verification":
+        render_ford_source_gallery(
+            "Verification",
+            ford_reference_pages[
+                "Verification"
+            ],
+        )
+
+    else:
+        render_ford_source_gallery(
+            "Observed Evidence",
+            ford_reference_pages[
+                "Observed Evidence"
+            ],
+        )
+
+
+    st.markdown("### 2.2 Evidence Link Summary")
+
+    link_r, link_v, link_f = st.columns(3)
+
+    with link_r:
+        with st.container(border=True):
+            st.markdown("**R · Requirement**")
+            st.write("50 ≤ H ≤ 57 HRC")
+            st.caption(
+                "What the engineering design requires"
+            )
+
+    with link_v:
+        with st.container(border=True):
+            st.markdown("**V · Verification**")
+            st.write("H ≥ 50 HRC")
+            st.caption(
+                "What the historical inspection accepted"
+            )
+
+    with link_f:
+        with st.container(border=True):
+            st.markdown("**F · Observed Evidence**")
+            st.write("58 ≤ H ≤ 60 HRC")
+            st.caption(
+                "What was physically observed"
+            )
+
+    bridge_left, bridge_middle, bridge_right = st.columns(3)
+
+    with bridge_left:
+        st.success(
+            "✓ Same engineering quantity"
+        )
+        st.caption(
+            "Intake-valve hardness"
+        )
+
+    with bridge_middle:
+        st.success(
+            "✓ Common engineering unit"
+        )
+        st.caption(
+            "Rockwell C · HRC"
+        )
+
+    with bridge_right:
+        st.success(
+            "✓ Source provenance bound"
+        )
+        st.caption(
+            "Each role traces to an original public record"
+        )
+
+    st.code(
+        "Source Evidence → Role Grounding → Engineer Review "
+        "→ Canonical H [HRC] → R(H), V(H), F(H)",
+        language="text",
+    )
+
+    st.caption(
+        "R / V / F가 같은 문자열이라는 이유로 자동 연결되는 것이 아니라, "
+        "같은 engineering state를 나타내는지 검토한 뒤 "
+        "canonical variable H로 연결됩니다."
     )
 
     st.markdown("### 3. Formalization")
@@ -1814,62 +2232,257 @@ AND NOT R(H)""",
             )
 
     with result_right:
-        st.table(
-            [
-                {
-                    "Deterministic check": "Observed evidence · F(60)",
-                    "Result": "PASS",
-                    "Meaning": "60 HRC is inside the validated observed evidence envelope",
-                },
-                {
-                    "Deterministic check": "Historical verification · V(60)",
-                    "Result": "PASS",
-                    "Meaning": "60 HRC satisfies the historical lower-bound criterion",
-                },
-                {
-                    "Deterministic check": "Engineering requirement · R(60)",
-                    "Result": "FAIL",
-                    "Meaning": "60 HRC exceeds the 57 HRC engineering upper bound",
-                },
-            ]
+        st.markdown(
+            "**Witness evaluation · H = 60 HRC**"
         )
+
+        deterministic_checks = [
+            (
+                "Observed Evidence · F(60)",
+                "PASS",
+                (
+                    "60 HRC is inside the validated "
+                    "observed evidence envelope."
+                ),
+            ),
+            (
+                "Historical Verification · V(60)",
+                "PASS",
+                (
+                    "60 HRC satisfies the historical "
+                    "lower-bound verification criterion."
+                ),
+            ),
+            (
+                "Engineering Requirement · R(60)",
+                "FAIL",
+                (
+                    "60 HRC exceeds the 57 HRC "
+                    "engineering upper bound."
+                ),
+            ),
+        ]
+
+        for (
+            check_name,
+            check_result,
+            check_meaning,
+        ) in deterministic_checks:
+            with st.container(
+                border=True,
+            ):
+                check_left, check_right = st.columns(
+                    [3.0, 0.8]
+                )
+
+                with check_left:
+                    st.markdown(
+                        "**"
+                        + check_name
+                        + "**"
+                    )
+
+                    st.caption(
+                        check_meaning
+                    )
+
+                with check_right:
+                    if check_result == "PASS":
+                        st.success(
+                            "PASS"
+                        )
+                    else:
+                        st.error(
+                            "FAIL"
+                        )
 
     st.success(
         "Verification Escape FOUND ✓ · "
         "H = 60 HRC는 F와 V를 만족하지만 R을 만족하지 않습니다."
     )
 
-    st.markdown("### 5. Decision Responsibility")
+    st.markdown("### 5. Case Conclusion")
 
-    responsibility_ai, responsibility_core = st.columns(2)
+    st.caption(
+        "Ford reference evidence와 deterministic verification을 "
+        "종합한 최종 판정입니다."
+    )
+
+    conclusion_left, conclusion_middle, conclusion_right = (
+        st.columns(3)
+    )
+
+    with conclusion_left:
+        with st.container(border=True):
+            st.markdown("**Final Result**")
+            st.success("VERIFICATION ESCAPE FOUND")
+
+    with conclusion_middle:
+        with st.container(border=True):
+            st.markdown("**Solver Witness**")
+            st.metric(
+                "H",
+                "60 HRC",
+            )
+
+    with conclusion_right:
+        with st.container(border=True):
+            st.markdown("**Evidence Basis**")
+            st.success("SOURCE-BACKED")
+
+    st.markdown("#### Why the escape exists")
+
+    reason_f, reason_v, reason_r = st.columns(3)
+
+    with reason_f:
+        with st.container(border=True):
+            st.markdown("**F(60) · Observed Evidence**")
+            st.success("PASS")
+            st.write(
+                "60 HRC is contained in the validated "
+                "58–60 HRC observed evidence envelope."
+            )
+
+    with reason_v:
+        with st.container(border=True):
+            st.markdown("**V(60) · Historical Verification**")
+            st.success("PASS")
+            st.write(
+                "60 HRC satisfies the historical "
+                "lower-bound criterion H ≥ 50."
+            )
+
+    with reason_r:
+        with st.container(border=True):
+            st.markdown("**R(60) · Engineering Requirement**")
+            st.error("FAIL")
+            st.write(
+                "60 HRC exceeds the updated "
+                "engineering upper bound of 57 HRC."
+            )
+
+    st.success(
+        "최종 결론 · 문서 근거로 관측된 H = 60 HRC 상태는 "
+        "historical verification criterion은 만족하지만 "
+        "updated engineering requirement는 위반합니다. "
+        "따라서 frozen Ford model에서 "
+        "F(H) ∧ V(H) ∧ ¬R(H)를 만족하는 "
+        "Verification Escape가 존재합니다."
+    )
+
+    st.info(
+        "Engineering significance · 요구조건은 50–57 HRC로 "
+        "상한이 추가되었지만, historical verification evidence에는 "
+        "50 HRC lower-bound 중심의 control이 남아 있었습니다. "
+        "EVST는 이 requirement–verification mismatch를 "
+        "source evidence에서 formal model로 연결해 검출합니다."
+    )
+
+    with st.expander(
+        "해석 범위 / 과도한 주장 방지",
+        expanded=False,
+    ):
+        st.write(
+            "이 결과는 모든 58–60 HRC 부품이 실제 historical "
+            "inspection을 통과했다는 의미가 아닙니다."
+        )
+        st.write(
+            "58–60 HRC는 전체 manufacturing domain이 아니라 "
+            "문서에서 확인된 observed evidence envelope입니다."
+        )
+        st.write(
+            "또한 hardness가 fracture의 유일한 원인이라는 "
+            "인과관계를 주장하지 않습니다."
+        )
+        st.write(
+            "Verification Escape라는 용어는 EVST의 formal "
+            "analysis 표현이며 Ford/NHTSA가 사용한 용어가 아닙니다."
+        )
+
+    st.markdown("### 6. Decision Responsibility")
+
+    st.caption(
+        "EVST는 AI가 최종 공학 판정을 내리지 않도록 "
+        "Semantic Bridge, Human Review, Deterministic Core의 "
+        "책임을 분리합니다."
+    )
+
+    responsibility_ai, responsibility_human, responsibility_core = (
+        st.columns(3)
+    )
 
     with responsibility_ai:
         with st.container(border=True):
             st.markdown("#### AI · Semantic Bridge")
-            st.write("✓ Engineering evidence candidate discovery")
-            st.write("✓ 문맥 기반 의미 구조화")
-            st.write("✓ Source evidence 연결 지원")
-            st.write("✕ 최종 Verification Escape 판정")
-            st.write("✕ Solver witness 임의 결정")
+            st.write("✓ Evidence candidate discovery")
+            st.write("✓ Engineering context structuring")
+            st.write("✓ Proposed role grounding")
+            st.write("✓ Source-text association")
+            st.write("✕ Engineer Approval")
+            st.write("✕ Final escape decision")
+
+    with responsibility_human:
+        with st.container(border=True):
+            st.markdown("#### Engineer Review")
+            st.write("✓ Source location review")
+            st.write("✓ Role evidence adjudication")
+            st.write("✓ Evidence approval")
+            st.write("✓ Canonical variable mapping")
+            st.write("✕ Constraint invention")
+            st.write("✕ Solver-result override")
 
     with responsibility_core:
         with st.container(border=True):
             st.markdown("#### Deterministic Core")
-            st.write("✓ 승인된 constraint 구조 검증")
-            st.write("✓ R / V / F Formal Model 구성")
-            st.write("✓ Solver query 실행")
-            st.write("✓ Witness 검증")
-            st.write("✓ Verification Escape 최종 판정")
+            st.write("✓ Strict constraint validation")
+            st.write("✓ R / V / F Formal Model")
+            st.write("✓ Solver query execution")
+            st.write("✓ Witness verification")
+            st.write("✓ Verification Escape decision")
+            st.write("✕ Unsupported semantic guessing")
 
-    st.caption(
-        "따라서 Ford 사례의 핵심은 단순히 세 숫자를 비교하는 것이 아니라, "
-        "분산된 engineering documents에서 근거를 구조화하고 검토한 뒤 "
-        "deterministic formal verification까지 연결하는 전체 pipeline입니다."
+
+    st.markdown("#### Fail-safe Behavior")
+
+    fail_left, fail_middle, fail_right = st.columns(3)
+
+    with fail_left:
+        with st.container(border=True):
+            st.markdown("**Missing Evidence**")
+            st.warning("FORMALIZATION BLOCKED")
+            st.caption(
+                "R / V / F 가운데 필요한 근거가 없으면 "
+                "escape를 억지로 생성하지 않습니다."
+            )
+
+    with fail_middle:
+        with st.container(border=True):
+            st.markdown("**Ambiguous Semantics**")
+            st.warning("REVIEW REQUIRED")
+            st.caption(
+                "역할 또는 source 의미가 불명확하면 "
+                "사람의 검토 전까지 downstream으로 전달하지 않습니다."
+            )
+
+    with fail_right:
+        with st.container(border=True):
+            st.markdown("**Unsupported / Indeterminate**")
+            st.warning("NO POSITIVE CLAIM")
+            st.caption(
+                "지원하지 않는 의미 또는 결정 불가능한 상태를 "
+                "Verification Escape로 보고하지 않습니다."
+            )
+
+    st.info(
+        "Ford 사례에서 보이는 50–57 / ≥50 / 58–60 비교는 "
+        "pipeline의 마지막 단계일 뿐입니다. 제품의 핵심은 실제 문서에서 "
+        "source-backed evidence를 구성하고, 사람의 검토를 거쳐 "
+        "deterministic formal verification까지 연결하는 것입니다."
     )
 
     st.divider()
 
-    st.markdown("### 6. Generic Product Path")
+    st.markdown("### 7. Generic Product Path")
 
     st.write(
         "Ford는 검증된 reference walkthrough입니다. "
