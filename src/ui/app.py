@@ -2528,11 +2528,448 @@ AND NOT R(H)""",
 
         st.rerun()
 
+    st.divider()
+
+    st.markdown("### 8. Validation Evidence")
+
+    st.caption(
+        "TRUST · Ford 결과가 특정 숫자나 문서에 맞춘 "
+        "hardcoding이 아닌지, 그리고 근거가 부족한 경우 "
+        "시스템이 안전하게 멈추는지를 별도의 검증으로 확인합니다."
+    )
+
+    from pathlib import Path as _ValidationPath
+
+    _validation_root = (
+        _ValidationPath(__file__).resolve().parents[2]
+    )
+
+    _fault_output_path = (
+        _validation_root
+        / "validation"
+        / "fault_injection_03"
+        / "prototype"
+        / "run_01_fault_injection_output.txt"
+    )
+
+    _mutation_test_path = (
+        _validation_root
+        / "tests"
+        / "test_anti_hardcoding_mutation.py"
+    )
+
+    _fault_output_text = ""
+
+    if _fault_output_path.exists():
+        _fault_output_text = _fault_output_path.read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    _fault_lines = _fault_output_text.splitlines()
+
+    _fault_case_count = sum(
+        1
+        for line in _fault_lines
+        if line.startswith("T3-")
+        and " — " in line
+    )
+
+    _fault_pass_count = sum(
+        1
+        for line in _fault_lines
+        if line.strip() == "result: PASS"
+    )
+
+    _fault_assertion_count = 0
+
+    for line in _fault_lines:
+        if line.startswith("tests_run:"):
+            try:
+                _fault_assertion_count += int(
+                    line.split(":", 1)[1].strip()
+                )
+            except ValueError:
+                pass
+
+    _fault_official_pass = (
+        "RESULT: PASS" in _fault_output_text
+        and _fault_case_count == 8
+        and _fault_pass_count == 8
+    )
+
+    _mutation_text = ""
+
+    if _mutation_test_path.exists():
+        _mutation_text = _mutation_test_path.read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    _mutation_test_count = sum(
+        1
+        for line in _mutation_text.splitlines()
+        if line.strip().startswith("def test_")
+    )
+
+    with st.container(border=True):
+        st.markdown("#### 검증 질문")
+
+        st.write(
+            "Ford에서 Verification Escape가 나온 이유가 "
+            "Ford용 숫자·파일명·case identity 때문인지, "
+            "아니면 입력된 Formal Model 자체 때문인지 검증합니다."
+        )
+
+        trust_metric_a, trust_metric_b, trust_metric_c = (
+            st.columns(3)
+        )
+
+        with trust_metric_a:
+            st.metric(
+                "Anti-hardcoding Checks",
+                str(_mutation_test_count)
+                if _mutation_test_count
+                else "—",
+            )
+
+        with trust_metric_b:
+            st.metric(
+                "Fault Injection Cases",
+                (
+                    f"{_fault_pass_count}/{_fault_case_count}"
+                    if _fault_case_count
+                    else "—"
+                ),
+            )
+
+        with trust_metric_c:
+            st.metric(
+                "Fault Assertions",
+                (
+                    str(_fault_assertion_count)
+                    if _fault_assertion_count
+                    else "—"
+                ),
+            )
+
+    trust_left, trust_right = st.columns(2)
+
+    with trust_left:
+        with st.container(border=True):
+            st.markdown("#### 01 · Anti-hardcoding")
+
+            if _mutation_test_count >= 4:
+                st.success(
+                    "AUTOMATED MUTATION CHECKS · "
+                    + str(_mutation_test_count)
+                    + " TESTS"
+                )
+            else:
+                st.warning(
+                    "Mutation validation artifact를 "
+                    "완전히 확인하지 못했습니다."
+                )
+
+            st.write(
+                "입력 숫자를 바꾸었을 때 solver 결과가 "
+                "그에 따라 실제로 달라지는지 검증합니다."
+            )
+
+            st.markdown(
+                """
+- **Feasible Domain 변경**
+  escape가 존재하는 범위에서 안전한 범위로 바꾸면
+  `VERIFICATION_GAP_FOUND → NO_ESCAPE_FOUND`
+
+- **Requirement 변경**
+  requirement 상한을 넓히면
+  `VERIFICATION_GAP_FOUND → NO_ESCAPE_FOUND`
+
+- **변수 / 단위 일반성**
+  `P · MPa`, `T · degC` 등 Ford와 무관한 입력에서도 동작
+
+- **Case / Source identity 독립성**
+  case 이름과 source reference가 달라도 수학적 결과는 유지
+"""
+            )
+
+            st.caption(
+                "검증 대상 · "
+                "tests/test_anti_hardcoding_mutation.py"
+            )
+
+    with trust_right:
+        with st.container(border=True):
+            st.markdown(
+                "#### 02 · Controlled Fault Injection"
+            )
+
+            if _fault_official_pass:
+                st.success(
+                    "OFFICIAL FROZEN RUN · "
+                    + str(_fault_pass_count)
+                    + "/"
+                    + str(_fault_case_count)
+                    + " PASS"
+                )
+            else:
+                st.warning(
+                    "Official fault-injection artifact를 "
+                    "완전히 확인하지 못했습니다."
+                )
+
+            st.write(
+                "잘못된 입력이나 불완전한 상태를 의도적으로 "
+                "주입하여 positive claim이 발생하지 않는지 검증합니다."
+            )
+
+            st.markdown(
+                """
+- Unsupported constraint semantics
+- External analysis required
+- Invalid Core input
+- Missing Feasible Evidence
+- Human Review incomplete
+- Solver UNKNOWN / timeout
+- Unsafe patch interpretation
+- Conflicting correction history
+"""
+            )
+
+            if _fault_assertion_count:
+                st.caption(
+                    "Official assertions · "
+                    + str(_fault_assertion_count)
+                )
+
+            st.caption(
+                "Frozen artifact · "
+                "validation/fault_injection_03/"
+                "prototype/run_01_fault_injection_output.txt"
+            )
+
+    boundary_left, boundary_right = st.columns(2)
+
+    with boundary_left:
+        with st.container(border=True):
+            st.markdown(
+                "#### 03 · Unseen Real Document"
+            )
+
+            st.info(
+                "Kyogle ATSB · 59-page real-world PDF"
+            )
+
+            st.write(
+                "Ford와 다른 분야·문서 구조의 실제 보고서를 "
+                "Generic Engine에 입력하여 document ingestion, "
+                "candidate discovery, provenance, grounding을 "
+                "확인했습니다."
+            )
+
+            st.markdown(
+                """
+**확인 결과**
+
+✓ 실제 문서에서 numeric evidence candidate 발견
+✓ Source provenance 확인
+✓ R / V / F 후보를 generic pipeline으로 처리
+✕ compatible independent R / V / F set은 확립되지 않음
+✕ Solver는 의도적으로 실행하지 않음
+"""
+            )
+
+            st.warning(
+                "BOUNDARY EVIDENCE · FORMALIZATION BLOCKED"
+            )
+
+            st.caption(
+                "이 결과는 두 번째 Verification Escape 사례가 아니라, "
+                "새 문서에서도 근거가 부족하면 solver를 차단하는 "
+                "fail-safe / generalization evidence입니다."
+            )
+
+    with boundary_right:
+        with st.container(border=True):
+            st.markdown(
+                "#### 04 · Semantic / Input Boundaries"
+            )
+
+            st.write(
+                "수치가 존재한다는 이유만으로 unsupported semantics를 "
+                "억지로 scalar constraint로 변환하지 않는지 확인했습니다."
+            )
+
+            st.markdown(
+                """
+**Barnawartha**
+
+Conditional speed-band / lookup semantics
+→ current scalar schema로 lossless formalization 불가
+→ **BLOCKED**
+
+**Ely**
+
+Relational engineering semantics
+→ 현재 지원 범위 밖
+→ **BLOCKED**
+
+**Encrypted PDFs**
+
+지원되지 않는 encrypted input
+→ Core로 전달하지 않음
+→ **FAIL-SAFE**
+"""
+            )
+
+            st.warning(
+                "지원하지 않는 의미를 Verification Escape로 "
+                "재해석하지 않습니다."
+            )
+
+    st.markdown("#### Validation Interpretation")
+
+    interpretation_a, interpretation_b, interpretation_c = (
+        st.columns(3)
+    )
+
+    with interpretation_a:
+        with st.container(border=True):
+            st.markdown("**Ford**")
+            st.success("COMPLETE REAL-WORLD E2E")
+            st.caption(
+                "Source → R/V/F → Human Review → "
+                "Formal Model → Solver → Witness"
+            )
+
+    with interpretation_b:
+        with st.container(border=True):
+            st.markdown("**Generalization**")
+            st.info("BOUNDARY EVIDENCE")
+            st.caption(
+                "Unseen document에서 candidate extraction과 "
+                "provenance / blocking behavior를 검증"
+            )
+
+    with interpretation_c:
+        with st.container(border=True):
+            st.markdown("**Safety**")
+            st.success("FAIL-SAFE VALIDATED")
+            st.caption(
+                "Missing / unsupported / ambiguous / UNKNOWN 상태에서 "
+                "positive claim을 방지"
+            )
+
+    st.info(
+        "검증 해석 · Ford는 완전한 real-world E2E flagship case입니다. "
+        "반면 범용성, anti-hardcoding, semantic boundary, fail-safe는 "
+        "별도의 mutation / unseen-document / fault-injection evidence로 "
+        "검증했습니다. 추가 공개 사례에서 full R / V / F 조건이 "
+        "성립하지 않은 경우에는 solver를 실행하지 않았습니다."
+    )
+
+    with st.expander(
+        "검증 근거 파일 확인 · Validation Artifacts",
+        expanded=False,
+    ):
+        st.markdown("**Anti-hardcoding**")
+        st.code(
+            "tests/test_anti_hardcoding_mutation.py",
+            language=None,
+        )
+
+        st.markdown(
+            "**Controlled Fault Injection · Official Frozen Run**"
+        )
+        st.code(
+            "validation/fault_injection_03/"
+            "prototype/run_01_fault_injection_output.txt",
+            language=None,
+        )
+
+        if _fault_output_text:
+            _fault_summary_lines = [
+                line
+                for line in _fault_lines
+                if (
+                    line.startswith("Expected cases:")
+                    or line.startswith("Observed cases:")
+                    or line.startswith("Passed cases:")
+                    or line.startswith("RESULT:")
+                )
+            ]
+
+            if _fault_summary_lines:
+                st.code(
+                    "\n".join(_fault_summary_lines),
+                    language=None,
+                )
+
+        st.caption(
+            "Ford solver의 official frozen run은 위 Ford walkthrough의 "
+            "Deterministic Verification 결과와 별도로 보존되어 있습니다."
+        )
+
     st.stop()
 
 
 if not ford_mode:
     st.subheader("Analyze Your Document")
+
+    with st.container(border=True):
+        st.markdown("#### 분석 가능 범위")
+
+        st.write(
+            "EVST는 다양한 Engineering PDF에서 "
+            "설계 요구조건(R), 검사·합격 기준(V), "
+            "실제 관측 근거(F)를 찾습니다."
+        )
+
+        st.caption(
+            "원문 근거가 확인되고, R / V / F가 같은 engineering state로 "
+            "안전하게 연결될 때만 Formal Verification을 수행합니다."
+        )
+
+        st.info(
+            "모든 PDF에서 Verification Escape가 발견되는 것은 아닙니다. "
+            "필요한 근거가 없거나, 의미가 불명확하거나, "
+            "서로 연결되지 않으면 Formalization 단계에서 안전하게 차단합니다."
+        )
+
+        st.markdown("**분석 결과는 다음 세 가지 중 하나가 될 수 있습니다.**")
+
+        result_found, result_none, result_blocked = st.columns(3)
+
+        with result_found:
+            with st.container(border=True):
+                st.markdown("**Verification Escape 발견**")
+                st.caption(
+                    "검사는 통과하지만 실제 engineering requirement를 "
+                    "위반하는 상태가 존재합니다."
+                )
+
+        with result_none:
+            with st.container(border=True):
+                st.markdown("**Escape 없음**")
+                st.caption(
+                    "R / V / F Formal Model은 성립하지만 "
+                    "Verification Escape는 존재하지 않습니다."
+                )
+
+        with result_blocked:
+            with st.container(border=True):
+                st.markdown("**Formalization 차단**")
+                st.caption(
+                    "근거 부족, 의미 불명확, 변수·단위 불일치 등으로 "
+                    "안전한 Formal Model을 만들 수 없습니다."
+                )
+
+    st.caption(
+        "EVST는 특정 Ford 문서나 특정 숫자에 맞춘 시스템이 아니라, "
+        "지원되는 engineering constraint 구조와 source provenance를 "
+        "기준으로 분석합니다."
+    )
 
     st.caption(
         "Upload one engineering PDF. The same immutable source is "
@@ -5731,6 +6168,261 @@ if analysis is not None:
                     )
                 )
             )
+
+        st.markdown("#### Observed Evidence 연결 진단")
+
+        st.caption(
+            "현재 선택된 Requirement / Verification을 기준으로 "
+            "Observed Evidence 후보가 같은 engineering state로 "
+            "연결될 수 있는지 확인합니다."
+        )
+
+        rv_connection_state = None
+
+        if (
+            selected_requirement is not None
+            and selected_verification is not None
+        ):
+            rv_connection_state = candidate_connection_state(
+                selected_verification,
+                [
+                    selected_requirement,
+                ],
+            )
+
+        feasible_connection_states = []
+
+        if (
+            feasible_analysis is not None
+            and selected_requirement is not None
+            and selected_verification is not None
+        ):
+            for candidate in feasible_analysis.candidates:
+                connection_state = candidate_connection_state(
+                    candidate,
+                    [
+                        selected_requirement,
+                        selected_verification,
+                    ],
+                )
+
+                feasible_connection_states.append(
+                    (
+                        candidate,
+                        connection_state,
+                    )
+                )
+
+        direct_feasible_candidates = [
+            candidate
+            for candidate, state
+            in feasible_connection_states
+            if state == "DIRECT"
+        ]
+
+        review_feasible_candidates = [
+            candidate
+            for candidate, state
+            in feasible_connection_states
+            if state == "REVIEW"
+        ]
+
+        mismatch_feasible_candidates = [
+            candidate
+            for candidate, state
+            in feasible_connection_states
+            if state == "MISMATCH"
+        ]
+
+        if rv_connection_state == "MISMATCH":
+            st.error(
+                "Requirement / Verification이 같은 "
+                "engineering state로 정렬되지 않았습니다."
+            )
+
+            st.caption(
+                "현재 선택한 R과 V가 서로 다른 변수 또는 단위를 "
+                "가리키므로, Observed Evidence와의 연결 여부를 "
+                "확정하지 않습니다."
+            )
+
+            st.info(
+                "Observed Evidence 후보는 그대로 유지됩니다. "
+                "먼저 Requirement / Verification 조합을 다시 검토하거나, "
+                "Engineer Review에서 engineering state의 동일성을 "
+                "확인해야 합니다."
+            )
+
+        else:
+            if direct_feasible_candidates:
+                st.success(
+                    "현재 R / V와 바로 연결 가능한 "
+                    "Observed Evidence 후보 · "
+                    + str(
+                        len(
+                            direct_feasible_candidates
+                        )
+                    )
+                    + "개"
+                )
+
+                st.caption(
+                    "표현된 engineering variable과 unit이 "
+                    "현재 deterministic 연결 규칙에서 일치합니다."
+                )
+
+            elif review_feasible_candidates:
+                st.warning(
+                    "바로 연결 가능한 Observed Evidence는 없지만, "
+                    "Engineer Review가 필요한 후보가 "
+                    + str(
+                        len(
+                            review_feasible_candidates
+                        )
+                    )
+                    + "개 있습니다."
+                )
+
+                st.caption(
+                    "단위는 연결 가능하지만 변수 표현 또는 "
+                    "engineering context의 동일성을 사람이 확인해야 합니다. "
+                    "후보는 자동으로 승인되지 않습니다."
+                )
+
+            elif feasible_connection_states:
+                st.error(
+                    "현재 R / V와 연결 가능한 "
+                    "실제 관측 근거를 확인하지 못했습니다."
+                )
+
+                st.markdown(
+                    "**현재 상태 · "
+                    "NO COMPATIBLE OBSERVED EVIDENCE**"
+                )
+
+                st.caption(
+                    "Observed Evidence 후보 자체는 발견되었지만, "
+                    "현재 선택된 Requirement / Verification과 "
+                    "같은 engineering state로 바로 연결할 수 있는 "
+                    "후보는 확인되지 않았습니다."
+                )
+
+                candidate_count_left, candidate_count_right = (
+                    st.columns(2)
+                )
+
+                with candidate_count_left:
+                    st.metric(
+                        "Observed Evidence 후보",
+                        len(
+                            feasible_connection_states
+                        ),
+                    )
+
+                with candidate_count_right:
+                    st.metric(
+                        "현재 연결 가능",
+                        0,
+                    )
+
+                st.info(
+                    "후보는 삭제되거나 숨겨지지 않습니다. "
+                    "다른 Observed Evidence 후보를 검토하거나 "
+                    "Engineer Review에서 engineering state의 "
+                    "동일성을 확인할 수 있습니다. "
+                    "확인 전에는 Formalization을 진행하지 않습니다."
+                )
+
+            else:
+                st.error(
+                    "Observed Evidence 후보를 확인하지 못했습니다."
+                )
+
+                st.caption(
+                    "Formal Verification에 필요한 실제 관측 근거가 "
+                    "없으므로 Formalization을 진행하지 않습니다."
+                )
+
+        if (
+            selected_feasible is not None
+            and selected_requirement is not None
+            and selected_verification is not None
+            and rv_connection_state != "MISMATCH"
+        ):
+            selected_feasible_connection_state = (
+                candidate_connection_state(
+                    selected_feasible,
+                    [
+                        selected_requirement,
+                        selected_verification,
+                    ],
+                )
+            )
+
+            if selected_feasible_connection_state == "MISMATCH":
+                st.error(
+                    "현재 선택한 Observed Evidence는 "
+                    "R / V와 변수 또는 단위가 일치하지 않습니다."
+                )
+
+                st.caption(
+                    "이 후보는 Formal Model에 자동 연결되지 않습니다. "
+                    "후보 자체는 계속 검토할 수 있습니다."
+                )
+
+            elif selected_feasible_connection_state == "REVIEW":
+                st.warning(
+                    "현재 선택한 Observed Evidence의 "
+                    "공학적 동일성 확인이 필요합니다."
+                )
+
+                st.caption(
+                    "자동 연결하지 않고 Engineer Review에서 "
+                    "같은 engineering state인지 확인해야 합니다."
+                )
+
+        with st.expander(
+            "연결 진단 기준",
+            expanded=False,
+        ):
+            st.write(
+                "이 진단은 후보를 정답/오답으로 판정하는 기능이 아닙니다."
+            )
+
+            st.write(
+                "자동 연결 안내는 현재 variable normalization과 "
+                "engineering unit 정렬을 기준으로 합니다."
+            )
+
+            st.write(
+                "문맥상 같은 물리량인지에 대한 최종 판단은 "
+                "Engineer Review에 남겨둡니다."
+            )
+
+            if feasible_connection_states:
+                st.caption(
+                    "후보 상태 요약 · "
+                    + "바로 연결 "
+                    + str(
+                        len(
+                            direct_feasible_candidates
+                        )
+                    )
+                    + " · 검토 필요 "
+                    + str(
+                        len(
+                            review_feasible_candidates
+                        )
+                    )
+                    + " · 불일치 "
+                    + str(
+                        len(
+                            mismatch_feasible_candidates
+                        )
+                    )
+                )
+
+        st.divider()
 
         if not unit_alignment_ready:
             st.error(
