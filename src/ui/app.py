@@ -5,6 +5,14 @@ from copy import deepcopy
 
 import streamlit as st
 
+# STREAMLIT CLOUD IMPORT BOOTSTRAP
+import sys as _sys
+from pathlib import Path as _BootstrapPath
+
+_REPO_ROOT = _BootstrapPath(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
 from src.application.semantic_ingress import (
     SemanticDocument,
     analyze_semantic_documents,
