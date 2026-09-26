@@ -592,6 +592,38 @@ def build_feasible_review_signature(
 
 
 # =========================================================
+# EVST CAPTION READABILITY
+st.markdown(
+    """
+    <style>
+    /* Streamlit caption / secondary explanatory text */
+    [data-testid="stCaptionContainer"] {
+        color: #52647a !important;
+        font-size: 0.94rem !important;
+        line-height: 1.58 !important;
+        font-weight: 500 !important;
+    }
+
+    [data-testid="stCaptionContainer"] p,
+    [data-testid="stCaptionContainer"] span {
+        color: #52647a !important;
+        font-size: 0.94rem !important;
+        line-height: 1.58 !important;
+        font-weight: 500 !important;
+    }
+
+    /* Small markdown text should not become excessively faint */
+    .stMarkdown small {
+        color: #52647a !important;
+        font-size: 0.92rem !important;
+        line-height: 1.55 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 # SESSION STATE
 # =========================================================
 
@@ -644,19 +676,7 @@ def build_pdf_source_set_signature(
 # STEP 1 — DOCUMENTS
 # =========================================================
 
-render_section_header(
-    "STAGE 01",
-    "분석 경로 선택",
-    "검증된 실제 사례를 확인하거나, 범용 엔진으로 새로운 Engineering PDF를 분석합니다.",
-)
-render_soft_note(
-    "Ford 경로는 사전에 검증된 real-world reference case를 설명합니다. "
-    "Analyze Your Document 경로는 특정 사례의 정답을 사용하지 않고 "
-    "업로드한 PDF에서 Requirement, Verification, Observed Evidence를 탐색합니다."
-)
-
-input_mode = "PDF Upload"
-
+# DOCUMENT PIPELINE STATE DEFAULTS
 documents = []
 pdf_documents = []
 source_pdfs = {}
@@ -665,6 +685,164 @@ feasible_pdf_documents = []
 document_input_ready = False
 pdf_input_signature = None
 
+render_section_header(
+    "STAGE 01",
+    "검사에 합격했는데, 설계 기준은 어길 수 있을까?",
+    "EVST(Engineering Verification Stress Test)는 설계 요구조건, 실제 검사 기준, "
+    "측정·시험 근거를 서로 연결해 검사에는 합격하지만 설계 요구조건을 위반하는 "
+    "상태가 실제로 가능한지 찾는 공학 검증 도구입니다.",
+)
+
+st.markdown(
+    "**각 숫자를 따로 비교하는 것이 아니라, 여러 변수와 조건을 동시에 적용했을 때 "
+    "검사 기준은 모두 만족하면서도 설계 요구조건을 위반하는 상태가 존재하는지 검증합니다.**"
+)
+
+with st.container(border=True):
+    st.markdown("#### 예시로 바로 이해하기")
+
+    st.caption(
+        "고온 압력 장비 · 관계형 조건의 동작 원리를 설명하기 위한 단순화된 가상 예시 "
+        "· P = 압력, T = 온도"
+    )
+
+    example_a, example_b, example_c = st.columns(3)
+
+    with example_a:
+        st.markdown("**설계 요구조건**")
+        st.markdown("### P ≤ 12 − 0.02(T − 200)")
+        st.caption(
+            "온도가 높아질수록 허용되는 압력이 낮아지는 조건"
+        )
+
+    with example_b:
+        st.markdown("**실제 검사 기준**")
+        st.markdown("### P ≤ 11 MPa")
+        st.markdown("### T ≤ 300 °C")
+        st.caption(
+            "검사에서는 압력과 온도를 각각 따로 확인"
+        )
+
+    with example_c:
+        st.markdown("**실제 관측 범위**")
+        st.markdown("### 9.5 ≤ P ≤ 11 MPa")
+        st.markdown("### 240 ≤ T ≤ 300 °C")
+        st.caption(
+            "측정 근거에서 확인된 실제 가능한 범위"
+        )
+
+    st.divider()
+
+    st.markdown("**EVST가 가능한 상태들 중 찾아낸 조합**")
+    st.markdown("### P = 11 MPa · T = 300 °C")
+
+    state_f, state_v, state_r = st.columns(3)
+
+    with state_f:
+        st.success("✓ 실제 관측 범위 안")
+
+    with state_v:
+        st.success("✓ 개별 검사 기준 모두 통과")
+
+    with state_r:
+        st.error("✕ 설계 요구조건 위반")
+
+    st.info(
+        "검사에서는 압력과 온도를 각각 따로 확인하므로 "
+        "P = 11 MPa와 T = 300 °C는 모두 검사 기준을 통과합니다. "
+        "하지만 설계 요구조건에서는 온도에 따라 허용압력이 달라집니다. "
+        "T = 300 °C를 설계식에 적용하면 허용압력은 10 MPa가 되므로, "
+        "P = 11 MPa 상태는 설계 요구조건을 위반합니다. "
+        "EVST는 이처럼 개별 검사는 모두 통과하더라도 여러 변수와 조건을 "
+        "함께 적용했을 때 위반이 발생하는 실제 가능한 상태를 탐색합니다."
+    )
+
+    st.caption(
+        "실제 분석에서는 더 많은 변수와 제약조건을 동시에 연결해, "
+        "검사 기준을 만족하면서 설계 요구조건을 위반하는 상태가 "
+        "존재하는지를 수학적으로 검증합니다."
+    )
+
+
+# LANDING REAL-WORLD COVERAGE GAP
+st.markdown(
+    "**이런 검증 누락은 실제 산업 문서에서도 확인됩니다.**"
+)
+st.caption(
+    "아래 내용은 가상 예시가 아니라 NHTSA가 공개한 실제 recall 문서를 근거로 합니다."
+)
+
+with st.expander(
+    "공식 사례 근거 보기 · Haldex / ZF",
+    expanded=False,
+):
+    st.markdown("#### Haldex / ZF Inversion Relay Valve")
+    st.caption(
+        "NHTSA Recall 24E-011 · 자동차 공압식 제동장치"
+    )
+
+    source_left, source_right = st.columns(2)
+
+    with source_left:
+        st.markdown("**요구조건**")
+        st.markdown("### Parking brake ≤ 3초")
+        st.write(
+            "주차 브레이크가 작동 후 3초 이내 완전히 작동하지 않으면 "
+            "FMVSS No. 121 요구조건을 충족하지 못할 수 있습니다."
+        )
+
+    with source_right:
+        st.markdown("**기존 검사에서 빠진 항목**")
+        st.markdown("### 작동 지연 시간 미검사")
+        st.write(
+            "공급업체의 기존 시험으로 부품을 검사했지만, "
+            "해당 시험에서는 작동 지연 시간을 직접 확인하지 않았습니다."
+        )
+
+    st.divider()
+
+    st.markdown("**NHTSA 원문에서 확인되는 내용**")
+
+    st.info(
+        "2023년 조사 당시 기존 공급업체 시험에서는 작동 지연 시간을 확인하지 않았고, "
+        "이후 Haldex는 주차 브레이크 작동 시간에 대한 "
+        "출하 전 100% 전수 검사(EOL)를 추가했습니다."
+    )
+
+    st.write(
+        "리콜 보고서에서는 inversion relay valve 문제로 주차 브레이크가 "
+        "3초 이내 완전히 작동하지 않을 수 있으며, 이 경우 FMVSS No. 121 "
+        "요구조건을 충족하지 못할 수 있다고 설명합니다."
+    )
+
+    link_left, link_right = st.columns(2)
+
+    with link_left:
+        st.link_button(
+            "NHTSA Recall Report 원문 PDF ↗",
+            "https://static.nhtsa.gov/odi/rcl/2024/RCLRPT-24E011-6939.PDF",
+            use_container_width=True,
+        )
+
+    with link_right:
+        st.link_button(
+            "NHTSA Chronology 원문 PDF ↗",
+            "https://static.nhtsa.gov/odi/rcl/2024/RMISC-24E011-6421.pdf",
+            use_container_width=True,
+        )
+
+    st.caption(
+        "리콜 보고서의 3초 기준은 PDF 2페이지에서 확인할 수 있습니다. "
+        "사건 경과 문서에서 기존 시험의 작동 지연 시간 미검사와 이후 100% EOL 검사 추가는 "
+        "1페이지에서 확인할 수 있습니다."
+    )
+
+    st.warning(
+        "이 사례는 실제 검증 범위 누락(Verification Coverage Gap) 사례입니다. "
+        "Ford 사례처럼 R / V / F의 수치 근거를 모두 연결해 Solver가 반례 상태까지 "
+        "확정한 전체 Verification Escape 검증 사례와는 구분합니다."
+    )
+
 st.markdown("### 시작 방법")
 
 entry_left, entry_right = st.columns(2)
@@ -672,21 +850,20 @@ entry_left, entry_right = st.columns(2)
 with entry_left:
     with st.container(border=True):
         st.markdown(
-            "#### 직접 분석해보기"
+            "#### 내 문서 분석하기"
         )
         st.markdown(
             """
             <div style="min-height: 3.4rem;">
-                새로운 Engineering PDF를 업로드해
-                범용 Evidence Discovery 및 Formal Verification
-                파이프라인을 실행합니다.
+                Engineering PDF를 업로드하면 설계 기준, 검사 기준,
+                측정 근거를 찾아 서로 연결 가능한지 확인합니다.
             </div>
             """,
             unsafe_allow_html=True,
         )
 
         if st.button(
-            "내 문서 사용 (Use My Document)",
+            "내 문서 분석하기",
             use_container_width=True,
             type=(
                 "primary"
@@ -707,21 +884,20 @@ with entry_left:
 with entry_right:
     with st.container(border=True):
         st.markdown(
-            "#### 실제 사례로 이해하기"
+            "#### 실제 사례로 먼저 이해하기"
         )
         st.markdown(
             """
             <div style="min-height: 3.4rem;">
-                검증이 완료된 Ford 실제 사례에서
-                Requirement → Verification → Observed Evidence →
-                Deterministic Verification 흐름을 확인합니다.
+                공개된 Ford 실제 문서로 검사 기준의 빈틈을
+                어떻게 찾아냈는지 빠르게 확인합니다.
             </div>
             """,
             unsafe_allow_html=True,
         )
 
         if st.button(
-            "Ford 검증 사례 보기",
+            "Ford 실제 검증 사례 보기",
             use_container_width=True,
             type=(
                 "primary"
@@ -769,9 +945,7 @@ if ford_mode:
         )
 
         st.caption(
-            "Ford는 사례 설명용 reference case입니다. "
-            "아래에서는 검증된 Evidence Chain과 deterministic result를 "
-            "먼저 보여주고, 원본 파일 identity는 필요할 때 확인할 수 있습니다."
+            'Ford 실제 사례의 검증 결과와 근거 연결 과정을 먼저 보여줍니다. 필요한 경우 원본 PDF도 직접 확인할 수 있습니다.'
         )
 
         with st.expander(
@@ -1122,7 +1296,7 @@ if ford_mode:
                     "추가 이미지 분석이 가능합니다. "
                     "동일한 원본 PDF는 한 번만 처리하고, "
                     "결과를 Requirement · Verification · "
-                    "Observed Evidence 분석에 재사용합니다. "
+                    "실제 관측 근거 분석에 재사용합니다. "
                     "이 기능은 원본 문서를 다시 분석하기 위한 선택 기능이며, "
                     "Validated Case 결과를 확인하는 데에는 필요하지 않습니다."
                 )
@@ -1499,21 +1673,20 @@ if ford_mode:
     )
 
     render_review_focus(
-        "Validated Execution Walkthrough",
+        "검증된 실제 사례",
         (
-            "검증된 Ford real-world case를 이용해 "
-            "EVST가 source document에서 deterministic verification까지 "
-            "어떤 단계를 거치는지 전체 실행 구조를 보여줍니다."
+            "실제 공개된 Ford 문서를 이용해 EVST가 원문에서 근거를 찾고, "
+            "엔지니어 검토와 수학적 검증을 거쳐 최종 결과에 도달하는 "
+            "전체 과정을 보여줍니다."
         ),
     )
 
-    st.markdown("## Ford Nano Intake Valve Hardness")
+    st.markdown("## Ford Nano 흡기밸브 경도 사례")
 
     st.caption(
-        "이 화면은 CLOSED real-world reference case의 검증된 execution trace를 "
-        "설명합니다. 사용자가 후보를 다시 고르는 화면은 아니지만, "
-        "제품이 실제로 수행하는 Source → AI Semantic Bridge → Human Review → "
-        "Formalization → Solver 구조를 그대로 보여줍니다."
+        "실제 공개된 Ford 공학 문서를 이용한 검증 사례입니다. "
+        "설계 요구조건(R), 당시 검사 기준(V), 실제 관측 근거(F)를 "
+        "원문에서 찾아 서로 연결한 뒤 Solver로 최종 검증합니다."
     )
 
     with st.expander(
@@ -1568,172 +1741,172 @@ if ford_mode:
             "reference source identity를 확인할 수 있습니다."
         )
 
-    st.markdown("### 1. EVST Processing Pipeline")
+    st.markdown("### 1. EVST 분석 과정")
+
+    st.caption(
+        "공개 원문 문서를 불러온 뒤 필요한 근거를 찾고, "
+        "엔지니어 검토와 수학적 검증을 거쳐 최종 결과를 확인합니다."
+    )
 
     pipeline_row_1 = st.columns(3)
 
     with pipeline_row_1[0]:
         with st.container(border=True):
-            st.markdown("**01 · Source Intake**")
-            st.metric("Public engineering records", "4 PDFs")
+            st.markdown("**01 · 원문 문서 불러오기**")
+            st.metric("공개 공학 문서", "4개 PDF")
             st.caption(
-                "실제 공개 Ford engineering source를 "
-                "immutable source set으로 등록합니다."
+                "실제 공개된 Ford 문서 4개를 원본 그대로 등록하고 "
+                "분석에 사용합니다."
             )
 
     with pipeline_row_1[1]:
         with st.container(border=True):
-            st.markdown("**02 · Text / Vision Recovery**")
-            st.write("PDF text + scanned-page recovery")
+            st.markdown("**02 · 문서 내용 읽기**")
+            st.write("텍스트 추출 + 스캔 페이지 인식")
             st.caption(
-                "텍스트가 없는 스캔 페이지는 Vision transcription을 통해 "
-                "semantic analysis 가능한 source text로 복구합니다."
+                "일반 PDF에서는 텍스트를 추출하고, "
+                "텍스트가 없는 스캔 페이지는 Vision을 이용해 "
+                "읽을 수 있는 내용으로 복구합니다."
             )
 
     with pipeline_row_1[2]:
         with st.container(border=True):
-            st.markdown("**03 · AI Evidence Discovery**")
+            st.markdown("**03 · 필요한 근거 찾기**")
             st.write(
-                "Requirement / Verification / Observed Evidence"
+                "설계 요구조건(R) · 검사 기준(V) · 실제 관측 근거(F)"
             )
             st.caption(
-                "AI는 source에서 engineering evidence candidate를 "
-                "구조화하는 Semantic Bridge 역할만 수행합니다."
+                "AI는 문서에서 세 종류의 근거 후보를 찾아 정리합니다. "
+                "이 단계에서는 최종 판정을 내리지 않습니다."
             )
 
     pipeline_row_2 = st.columns(3)
 
     with pipeline_row_2[0]:
         with st.container(border=True):
-            st.markdown("**04 · Grounding + Engineer Review**")
-            st.write("Role evidence + source provenance")
+            st.markdown("**04 · 근거 적합성 검토**")
+            st.write("원문 위치 · 역할 · 의미 확인")
             st.caption(
-                "후보의 역할 적합성, 원문 위치, 의미를 검토하고 "
-                "Engineer Approval 전에는 Formal Model에 반영하지 않습니다."
+                '원문과 대조해 근거의 역할을 확인하고, 승인된 근거만 사용합니다.'
             )
 
     with pipeline_row_2[1]:
         with st.container(border=True):
-            st.markdown("**05 · Formalization**")
-            st.write("R / V / F → canonical variable")
+            st.markdown("**05 · 조건을 수식으로 정리**")
+            st.write("R / V / F를 같은 공학 변수로 연결")
             st.caption(
-                "검토된 evidence만 deterministic constraint로 변환하고 "
-                "unsupported semantics는 차단합니다."
+                '승인된 근거만 수식으로 바꾸고, 불분명한 내용은 제외합니다.'
             )
 
     with pipeline_row_2[2]:
         with st.container(border=True):
-            st.markdown("**06 · Deterministic Verification**")
-            st.write("Validator + Solver")
+            st.markdown("**06 · Solver로 최종 검증**")
+            st.write('정해진 규칙 + Solver')
             st.caption(
-                "최종 Verification Escape 판정은 AI가 아니라 "
-                "deterministic validation과 solver가 수행합니다."
+                '검사 통과와 설계 위반이 동시에 가능한지 Solver로 확인합니다.'
             )
 
     st.info(
-        "AI는 문서를 읽고 engineering evidence를 구조화하지만, "
-        "최종 판정과 witness 생성은 deterministic verification layer가 담당합니다."
+        'AI는 문서에서 근거 후보를 찾아 정리합니다. 최종 판정과 반례 상태 검증은 정해진 규칙과 Solver가 수행합니다.'
     )
 
-    st.markdown("### 2. Validated Engineering Evidence Chain")
+    st.markdown("### 2. 검증된 공학 근거 연결")
 
     st.caption(
-        "검증된 Ford reference case에서 Formal Model로 연결된 "
-        "Requirement / Verification / Observed Evidence입니다. "
-        "각 값은 실제 공개 원본 문서의 source page와 연결되어 있습니다."
+        'Ford 공개 원문에서 확인한 설계 요구조건(R), 검사 기준(V), 실제 관측 근거(F)를 한눈에 보여줍니다.'
     )
 
     evidence_r, evidence_v, evidence_f = st.columns(3)
 
     with evidence_r:
         with st.container(border=True):
-            st.markdown("#### Requirement · R")
+            st.markdown("#### 설계 요구조건 · R")
 
-            st.markdown("**Engineering variable**")
-            st.write("Intake-valve tip hardness")
+            st.markdown("**검토 항목**")
+            st.write("흡기밸브 팁 경도")
 
             st.metric(
-                "Requirement",
+                "설계 요구조건 (Requirement)",
                 "50–57 HRC",
             )
 
             st.success(
-                "VALIDATED · Engineering Requirement"
+                "근거 확인 완료 · 설계 요구조건"
             )
 
-            st.markdown("**Primary source**")
+            st.markdown("**주요 근거 문서**")
             st.caption(
                 "INRD-EA23002-13504P1.pdf · Page 6"
             )
 
-            st.markdown("**Corroborating source**")
+            st.markdown("**보조 근거 문서**")
             st.caption(
                 "INRD-EA23002-13508P1.pdf · Page 4"
             )
 
             st.caption(
-                "Source-linked evidence · Engineer-reviewed"
+                "원문 근거 연결 · 엔지니어 검토 완료"
             )
 
     with evidence_v:
         with st.container(border=True):
-            st.markdown("#### Verification · V")
+            st.markdown("#### 검사 기준 · V")
 
-            st.markdown("**Engineering variable**")
-            st.write("Tip hardness acceptance criterion")
+            st.markdown("**검토 항목**")
+            st.write("팁 경도 합격 기준")
 
             st.metric(
-                "Historical criterion",
+                "당시 검사 기준",
                 "≥ 50 HRC",
             )
 
             st.success(
-                "VALIDATED · Historical Verification"
+                "근거 확인 완료 · 당시 검사 기준"
             )
 
-            st.markdown("**Primary source**")
+            st.markdown("**주요 근거 문서**")
             st.caption(
                 "INRL-EA23002-13503.pdf · Page 2"
             )
 
-            st.markdown("**Control chronology**")
+            st.markdown("**기준 변경 이력**")
             st.caption(
                 "INRL-EA23002-13503.pdf · Page 5"
             )
 
             st.caption(
-                "Source-linked evidence · Engineer-reviewed"
+                "원문 근거 연결 · 엔지니어 검토 완료"
             )
 
     with evidence_f:
         with st.container(border=True):
-            st.markdown("#### Observed Evidence · F")
+            st.markdown("#### 실제 관측 근거 · F")
 
-            st.markdown("**Engineering variable**")
-            st.write("Measured intake-valve hardness")
+            st.markdown("**검토 항목**")
+            st.write("측정된 흡기밸브 경도")
 
             st.metric(
-                "Observed evidence",
+                "실제 관측 범위",
                 "58–60 HRC",
             )
 
             st.success(
-                "VALIDATED · Observed Evidence"
+                "근거 확인 완료 · 실제 관측 근거"
             )
 
-            st.markdown("**Primary source**")
+            st.markdown("**주요 근거 문서**")
             st.caption(
                 "INRD-EA23002-13508P1.pdf · Page 4"
             )
 
-            st.markdown("**Corroborating source**")
+            st.markdown("**보조 근거 문서**")
             st.caption(
                 "INRD-EA23002-13506.pdf · Page 1"
             )
 
             st.caption(
-                "Observed evidence envelope · "
-                "not the full manufacturing domain"
+                "문서에서 확인된 실제 관측 범위 · "
+                "전체 생산 범위를 의미하지 않음"
             )
 
 
@@ -1741,7 +1914,7 @@ if ford_mode:
         "Requirement": [
             {
                 "label": (
-                    "Requirement change chronology · "
+                    "요구조건 변경 이력 · "
                     "INRD-EA23002-13504P1.pdf · Page 6"
                 ),
                 "filename": "INRD-EA23002-13504P1.pdf",
@@ -1799,7 +1972,7 @@ if ford_mode:
                 ),
             },
         ],
-        "Observed Evidence": [
+        "실제 관측 근거": [
             {
                 "label": (
                     "Central Lab measured hardness · "
@@ -1873,12 +2046,12 @@ if ford_mode:
         )
 
         meta_left.metric(
-            "Evidence Role",
+            "근거 역할",
             key_prefix,
         )
 
         meta_middle.caption(
-            "Source document"
+            "원문 문서"
         )
 
         meta_middle.markdown(
@@ -1961,16 +2134,16 @@ if ford_mode:
                     + source.sha256
                 )
                 st.caption(
-                    "Immutable source page · Page "
+                    "Immutable 원문 페이지 · Page "
                     + str(evidence["page"])
                 )
 
 
-    st.markdown("### 2.1 Evidence Source Preview")
+    st.markdown("### 2.1 원문 근거 미리보기")
 
     st.caption(
         "R / V / F를 구성한 실제 공개 원문 페이지를 역할별로 확인합니다. "
-        "Ford reference evidence는 하나의 PDF가 아니라 여러 engineering "
+        "Ford 기준 근거는 하나의 PDF가 아니라 여러 engineering "
         "records에 분산되어 있으므로, primary source와 corroborating source를 "
         "함께 표시합니다."
     )
@@ -2041,7 +2214,7 @@ if ford_mode:
 
     with source_nav_r:
         if st.button(
-            "Requirement Sources",
+            "설계 요구조건 근거",
             use_container_width=True,
             type=(
                 "primary"
@@ -2060,7 +2233,7 @@ if ford_mode:
 
     with source_nav_v:
         if st.button(
-            "Verification Sources",
+            "검사 기준 근거",
             use_container_width=True,
             type=(
                 "primary"
@@ -2079,21 +2252,21 @@ if ford_mode:
 
     with source_nav_f:
         if st.button(
-            "Observed Evidence Sources",
+            "실제 관측 근거",
             use_container_width=True,
             type=(
                 "primary"
                 if st.session_state[
                     "ford_source_role_view"
                 ]
-                == "Observed Evidence"
+                == "실제 관측 근거"
                 else "secondary"
             ),
             key="ford_source_nav_observed",
         ):
             st.session_state[
                 "ford_source_role_view"
-            ] = "Observed Evidence"
+            ] = "실제 관측 근거"
             st.rerun()
 
 
@@ -2111,7 +2284,7 @@ if ford_mode:
             role_name
             + " · "
             + str(len(evidence_items))
-            + " source pages"
+            + " 원문 페이지s"
         )
 
         for index, evidence in enumerate(
@@ -2153,54 +2326,54 @@ if ford_mode:
 
     else:
         render_ford_source_gallery(
-            "Observed Evidence",
+            "실제 관측 근거",
             ford_reference_pages[
-                "Observed Evidence"
+                "실제 관측 근거"
             ],
         )
 
 
-    st.markdown("### 2.2 Evidence Link Summary")
+    st.markdown("### 2.2 근거 연결 요약")
 
     link_r, link_v, link_f = st.columns(3)
 
     with link_r:
         with st.container(border=True):
-            st.markdown("**R · Requirement**")
+            st.markdown("**R · 설계 요구조건**")
             st.write("50 ≤ H ≤ 57 HRC")
             st.caption(
-                "What the engineering design requires"
+                "설계에서 요구하는 기준"
             )
 
     with link_v:
         with st.container(border=True):
-            st.markdown("**V · Verification**")
+            st.markdown("**V · 검사 기준**")
             st.write("H ≥ 50 HRC")
             st.caption(
-                "What the historical inspection accepted"
+                "당시 검사에서 합격으로 인정한 기준"
             )
 
     with link_f:
         with st.container(border=True):
-            st.markdown("**F · Observed Evidence**")
+            st.markdown("**F · 실제 관측 근거**")
             st.write("58 ≤ H ≤ 60 HRC")
             st.caption(
-                "What was physically observed"
+                "실제 문서에서 관측된 값"
             )
 
     bridge_left, bridge_middle, bridge_right = st.columns(3)
 
     with bridge_left:
         st.success(
-            "✓ Same engineering quantity"
+            "✓ 동일한 공학 변수"
         )
         st.caption(
-            "Intake-valve hardness"
+            "흡기밸브 경도"
         )
 
     with bridge_middle:
         st.success(
-            "✓ Common engineering unit"
+            "✓ 동일한 공학 단위"
         )
         st.caption(
             "Rockwell C · HRC"
@@ -2208,36 +2381,36 @@ if ford_mode:
 
     with bridge_right:
         st.success(
-            "✓ Source provenance bound"
+            "✓ 원문 근거 연결 완료"
         )
         st.caption(
-            "Each role traces to an original public record"
+            "각 역할은 실제 공개 원문 근거로 추적할 수 있습니다"
         )
 
     st.code(
-        "Source Evidence → Role Grounding → Engineer Review "
+        "Source Evidence → 역할 근거 연결 → 엔지니어 검토 "
         "→ Canonical H [HRC] → R(H), V(H), F(H)",
         language="text",
     )
 
     st.caption(
         "R / V / F가 같은 문자열이라는 이유로 자동 연결되는 것이 아니라, "
-        "같은 engineering state를 나타내는지 검토한 뒤 "
-        "canonical variable H로 연결됩니다."
+        "같은 공학 상태를 나타내는지 검토한 뒤 "
+        "공통 변수 H로 연결됩니다."
     )
 
-    st.markdown("### 3. Formalization")
+    st.markdown("### 3. 수학 모델 구성")
 
     formal_left, formal_right = st.columns([1.4, 1.0])
 
     with formal_left:
-        st.markdown("**Canonical engineering variable**")
+        st.markdown("**공통 공학 변수**")
         st.code(
-            "H = intake-valve tip hardness [HRC]",
+            "H = 흡기밸브 팁 경도 [HRC]",
             language="text",
         )
 
-        st.markdown("**Deterministic constraints**")
+        st.markdown("**결정론적 제약조건**")
         st.code(
             """R(H) := 50 <= H <= 57
 V(H) := H >= 50
@@ -2246,7 +2419,7 @@ F(H) := 58 <= H <= 60""",
         )
 
     with formal_right:
-        st.markdown("**Verification Escape query**")
+        st.markdown("**Verification Escape 탐색 조건**")
         st.code(
             """exists H:
     F(H)
@@ -2256,51 +2429,48 @@ AND NOT R(H)""",
         )
 
         st.caption(
-            "목표는 '검증은 통과하지만 실제 engineering requirement는 "
-            "위반하는 feasible / observed state가 존재하는가?'입니다."
+            "목표는 '검증은 통과하지만 실제 설계 요구조건는 "
+            "위반하는 실제 가능한 상태가 존재하는가?'입니다."
         )
 
-    st.markdown("### 4. Deterministic Verification")
+    st.markdown("### 4. 결정론적 검증")
 
     result_left, result_right = st.columns([1.0, 2.0])
 
     with result_left:
         with st.container(border=True):
-            st.markdown("**Solver result**")
-            st.success("SOLVED")
+            st.markdown("**Solver 결과**")
+            st.success("검증 완료")
             st.metric(
-                "Witness",
+                "확인된 반례 상태",
                 "H = 60 HRC",
             )
 
     with result_right:
         st.markdown(
-            "**Witness evaluation · H = 60 HRC**"
+            "**반례 상태 검증 · H = 60 HRC**"
         )
 
         deterministic_checks = [
             (
-                "Observed Evidence · F(60)",
+                "실제 관측 근거 · F(60)",
                 "PASS",
                 (
-                    "60 HRC is inside the validated "
-                    "observed evidence envelope."
+                    '60 HRC는 문서에서 확인된 실제 관측 범위 안에 있습니다.'
                 ),
             ),
             (
-                "Historical Verification · V(60)",
+                "당시 검사 기준 · V(60)",
                 "PASS",
                 (
-                    "60 HRC satisfies the historical "
-                    "lower-bound verification criterion."
+                    '60 HRC는 당시 검사 기준의 하한 조건을 만족합니다.'
                 ),
             ),
             (
-                "Engineering Requirement · R(60)",
+                "설계 요구조건 · R(60)",
                 "FAIL",
                 (
-                    "60 HRC exceeds the 57 HRC "
-                    "engineering upper bound."
+                    '60 HRC는 설계 요구조건의 상한 57 HRC를 초과합니다.'
                 ),
             ),
         ]
@@ -2339,15 +2509,14 @@ AND NOT R(H)""",
                         )
 
     st.success(
-        "Verification Escape FOUND ✓ · "
+        "Verification Escape 발견 ✓ · "
         "H = 60 HRC는 F와 V를 만족하지만 R을 만족하지 않습니다."
     )
 
-    st.markdown("### 5. Case Conclusion")
+    st.markdown("### 5. 최종 판정")
 
     st.caption(
-        "Ford reference evidence와 deterministic verification을 "
-        "종합한 최종 판정입니다."
+        'Ford 원문 근거와 수학적 검증 결과를 종합한 최종 판정입니다.'
     )
 
     conclusion_left, conclusion_middle, conclusion_right = (
@@ -2369,13 +2538,13 @@ AND NOT R(H)""",
                     font-weight:700;
                     color:#64748b;
                     margin-bottom:18px;
-                ">Final Result</div>
+                ">최종 결과</div>
                 <div style="
                     font-size:1.08rem;
                     font-weight:700;
                     color:#14233b;
                     line-height:1.35;
-                ">VERIFICATION ESCAPE FOUND</div>
+                ">Verification Escape 발견</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -2396,7 +2565,7 @@ AND NOT R(H)""",
                     font-weight:700;
                     color:#64748b;
                     margin-bottom:18px;
-                ">Solver Witness</div>
+                ">Solver 반례 상태</div>
                 <div style="
                     font-size:1.08rem;
                     font-weight:700;
@@ -2422,63 +2591,67 @@ AND NOT R(H)""",
                     font-weight:700;
                     color:#64748b;
                     margin-bottom:18px;
-                ">Evidence Basis</div>
+                ">근거 상태</div>
                 <div style="
                     font-size:1.08rem;
                     font-weight:700;
                     color:#14233b;
-                ">SOURCE-BACKED</div>
+                ">원문 근거 확인</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    st.markdown("#### Why the escape exists")
+    st.markdown(
+        "<div style='height:1.2rem'></div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("#### 왜 Verification Escape가 발생하는가?")
+
+    st.caption(
+        "H = 60 HRC 상태를 실제 관측 근거(F), 당시 검사 기준(V), "
+        "설계 요구조건(R)에 각각 대입해 확인합니다."
+    )
 
     reason_f, reason_v, reason_r = st.columns(3)
 
     with reason_f:
         with st.container(border=True):
-            st.markdown("**F(60) · Observed Evidence**")
-            st.success("PASS")
+            st.markdown("**F(60) · 실제 관측 근거**")
+            st.success("통과")
             st.write(
-                "60 HRC is contained in the validated "
-                "58–60 HRC observed evidence envelope."
+                "60 HRC는 문서에서 확인된 "
+                "58–60 HRC 실제 관측 범위 안에 있습니다."
             )
 
     with reason_v:
         with st.container(border=True):
-            st.markdown("**V(60) · Historical Verification**")
-            st.success("PASS")
+            st.markdown("**V(60) · 당시 검사 기준**")
+            st.success("통과")
             st.write(
-                "60 HRC satisfies the historical "
-                "lower-bound criterion H ≥ 50."
+                "60 HRC는 당시 검사 기준인 "
+                "H ≥ 50을 만족합니다."
             )
 
     with reason_r:
         with st.container(border=True):
-            st.markdown("**R(60) · Engineering Requirement**")
-            st.error("FAIL")
+            st.markdown("**R(60) · 설계 요구조건**")
+            st.error("위반")
             st.write(
-                "60 HRC exceeds the updated "
-                "engineering upper bound of 57 HRC."
+                "60 HRC는 변경된 설계 요구조건의 "
+                "상한 57 HRC를 초과합니다."
             )
 
     st.success(
-        "최종 결론 · 문서 근거로 관측된 H = 60 HRC 상태는 "
-        "historical verification criterion은 만족하지만 "
-        "updated engineering requirement는 위반합니다. "
-        "따라서 frozen Ford model에서 "
-        "F(H) ∧ V(H) ∧ ¬R(H)를 만족하는 "
+        "최종 결론 · H = 60 HRC는 실제 문서에서 확인된 값이며, "
+        "당시 검사 기준은 통과하지만 변경된 설계 요구조건은 위반합니다. "
+        "따라서 F(H) ∧ V(H) ∧ ¬R(H)를 만족하는 "
         "Verification Escape가 존재합니다."
     )
 
     st.info(
-        "Engineering significance · 요구조건은 50–57 HRC로 "
-        "상한이 추가되었지만, historical verification evidence에는 "
-        "50 HRC lower-bound 중심의 control이 남아 있었습니다. "
-        "EVST는 이 requirement–verification mismatch를 "
-        "source evidence에서 formal model로 연결해 검출합니다."
+        '공학적 의미 · 설계 요구조건에는 57 HRC 상한이 추가되었지만, 당시 검사 기준은 50 HRC 하한 중심으로 남아 있었습니다.\n\nEVST는 이 차이를 원문 근거와 수학 모델로 연결해 검증합니다.'
     )
 
     with st.expander(
@@ -2486,28 +2659,30 @@ AND NOT R(H)""",
         expanded=False,
     ):
         st.write(
-            "이 결과는 모든 58–60 HRC 부품이 실제 historical "
-            "inspection을 통과했다는 의미가 아닙니다."
-        )
-        st.write(
-            "58–60 HRC는 전체 manufacturing domain이 아니라 "
-            "문서에서 확인된 observed evidence envelope입니다."
-        )
-        st.write(
-            "또한 hardness가 fracture의 유일한 원인이라는 "
-            "인과관계를 주장하지 않습니다."
-        )
-        st.write(
-            "Verification Escape라는 용어는 EVST의 formal "
-            "analysis 표현이며 Ford/NHTSA가 사용한 용어가 아닙니다."
+            "이 결과는 58–60 HRC 범위의 모든 부품이 "
+            "당시 실제 검사에 합격했다는 뜻이 아닙니다."
         )
 
-    st.markdown("### 6. Decision Responsibility")
+        st.write(
+            "58–60 HRC는 전체 생산 범위가 아니라 "
+            "공개 문서에서 확인된 실제 관측 범위입니다."
+        )
+
+        st.write(
+            "또한 경도가 밸브 파손의 유일한 원인이라고 "
+            "주장하지 않습니다."
+        )
+
+        st.write(
+            "Verification Escape는 EVST에서 사용하는 분석 용어이며, "
+            "Ford 또는 NHTSA가 사용한 표현은 아닙니다."
+        )
+
+    st.markdown("### 6. 누가 무엇을 판단하는가")
 
     st.caption(
-        "EVST는 AI가 최종 공학 판정을 내리지 않도록 "
-        "Semantic Bridge, Human Review, Deterministic Core의 "
-        "책임을 분리합니다."
+        "AI가 최종 공학 판정을 내리지 않도록 "
+        "문서 분석, 사람 검토, 수학적 검증의 책임을 분리합니다."
     )
 
     responsibility_ai, responsibility_human, responsibility_core = (
@@ -2516,92 +2691,115 @@ AND NOT R(H)""",
 
     with responsibility_ai:
         with st.container(border=True):
-            st.markdown("#### AI · Semantic Bridge")
-            st.write("✓ Evidence candidate discovery")
-            st.write("✓ Engineering context structuring")
-            st.write("✓ Proposed role grounding")
-            st.write("✓ Source-text association")
-            st.write("✕ Engineer Approval")
-            st.write("✕ Final escape decision")
+            st.markdown("#### AI · 문서 근거 정리")
+            st.write(
+                "문서에서 R / V / F 후보와 원문 위치를 찾아 "
+                "검토하기 쉬운 형태로 정리합니다."
+            )
+            st.info("최종 판정은 하지 않습니다.")
 
     with responsibility_human:
         with st.container(border=True):
-            st.markdown("#### Engineer Review")
-            st.write("✓ Source location review")
-            st.write("✓ Role evidence adjudication")
-            st.write("✓ Evidence approval")
-            st.write("✓ Canonical variable mapping")
-            st.write("✕ Constraint invention")
-            st.write("✕ Solver-result override")
+            st.markdown("#### 엔지니어 · 근거 검토")
+            st.write(
+                "찾은 근거의 역할과 의미가 맞는지, "
+                "같은 공학 변수를 설명하는지 확인하고 승인합니다."
+            )
+            st.info("문서에 없는 조건을 새로 만들지 않습니다.")
 
     with responsibility_core:
         with st.container(border=True):
-            st.markdown("#### Deterministic Core")
-            st.write("✓ Strict constraint validation")
-            st.write("✓ R / V / F Formal Model")
-            st.write("✓ Solver query execution")
-            st.write("✓ Witness verification")
-            st.write("✓ Verification Escape decision")
-            st.write("✕ Unsupported semantic guessing")
+            st.markdown("#### 검증 코어 · 최종 검증")
+            st.write(
+                "승인된 조건만 수학 모델로 구성하고 "
+                "Solver를 이용해 Verification Escape 여부를 판정합니다."
+            )
+            st.info("AI의 추측으로 결과를 바꾸지 않습니다.")
 
+    with st.expander("세부 책임 범위 보기", expanded=False):
+        detail_ai, detail_human, detail_core = st.columns(3)
 
-    st.markdown("#### Fail-safe Behavior")
+        with detail_ai:
+            st.markdown("**AI**")
+            st.write("✓ 근거 후보 탐색")
+            st.write("✓ 공학 맥락 구조화")
+            st.write("✓ 원문 위치 연결")
+            st.write("✕ 엔지니어 승인")
+            st.write("✕ 최종 판정")
+
+        with detail_human:
+            st.markdown("**엔지니어**")
+            st.write("✓ 원문 위치 검토")
+            st.write("✓ 역할과 의미 검토")
+            st.write("✓ 근거 승인")
+            st.write("✓ 공통 변수 연결")
+            st.write("✕ Solver 결과 임의 변경")
+
+        with detail_core:
+            st.markdown("**검증 코어**")
+            st.write("✓ R / V / F 수학 모델")
+            st.write("✓ Solver 실행")
+            st.write("✓ 반례 상태 검증")
+            st.write("✓ Verification Escape 판정")
+            st.write("✕ 근거 없는 의미 추정")
+
+    st.markdown("#### 근거가 부족하거나 불명확하면?")
 
     fail_left, fail_middle, fail_right = st.columns(3)
 
     with fail_left:
         with st.container(border=True):
-            st.markdown("**Missing Evidence**")
-            st.warning("FORMALIZATION BLOCKED")
+            st.markdown("**근거 부족**")
+            st.warning("수학 모델 구성 중단")
             st.caption(
-                "R / V / F 가운데 필요한 근거가 없으면 "
-                "escape를 억지로 생성하지 않습니다."
+                "R / V / F에 필요한 근거가 없으면 "
+                "Verification Escape를 만들어내지 않습니다."
             )
 
     with fail_middle:
         with st.container(border=True):
-            st.markdown("**Ambiguous Semantics**")
-            st.warning("REVIEW REQUIRED")
+            st.markdown("**의미 불명확**")
+            st.warning("사람 검토 필요")
             st.caption(
-                "역할 또는 source 의미가 불명확하면 "
-                "사람의 검토 전까지 downstream으로 전달하지 않습니다."
+                "문장의 역할이나 의미가 불분명하면 "
+                "자동으로 다음 단계에 넘기지 않습니다."
             )
 
     with fail_right:
         with st.container(border=True):
-            st.markdown("**Unsupported / Indeterminate**")
-            st.warning("NO POSITIVE CLAIM")
+            st.markdown("**지원 불가 / 판단 불가**")
+            st.warning("확정 판정 없음")
             st.caption(
-                "지원하지 않는 의미 또는 결정 불가능한 상태를 "
+                "현재 지원하지 않는 의미나 Solver가 판단할 수 없는 상태를 "
                 "Verification Escape로 보고하지 않습니다."
             )
 
     st.info(
-        "Ford 사례에서 보이는 50–57 / ≥50 / 58–60 비교는 "
-        "pipeline의 마지막 단계일 뿐입니다. 제품의 핵심은 실제 문서에서 "
-        "source-backed evidence를 구성하고, 사람의 검토를 거쳐 "
-        "deterministic formal verification까지 연결하는 것입니다."
+        "Ford 사례의 숫자 비교는 전체 과정의 마지막 단계입니다. "
+        "핵심은 실제 문서에서 근거를 찾고, 사람이 검토한 뒤, "
+        "승인된 조건만 수학적으로 검증하는 것입니다."
     )
 
     st.divider()
 
-    st.markdown("### 7. Generic Product Path")
+    st.markdown("### 7. 다른 공학 문서는 어떻게 분석하나?")
 
     st.write(
-        "Ford는 검증된 reference walkthrough입니다. "
-        "실제 제품 기능에서는 새로운 Engineering PDF를 업로드하여 "
-        "동일한 Evidence Discovery → Grounding → Engineer Review → "
-        "Formalization → Deterministic Verification 구조를 실행합니다."
+        "위 Ford 사례는 실제 공개 문서를 이용해 "
+        "EVST의 전체 분석 과정을 확인한 실제 검증 사례입니다. "
+        "새로운 공학 PDF를 분석할 때도 같은 방식으로 "
+        "원문에서 필요한 근거를 찾고, 근거의 의미를 확인하고, "
+        "엔지니어 검토를 거쳐 수학 모델을 만든 뒤 Solver로 검증합니다."
     )
 
     st.info(
-        "새 문서에서 충분한 R / V / F 근거가 성립하지 않으면 "
-        "시스템은 Verification Escape를 억지로 생성하지 않고 "
-        "Formal Verification을 BLOCK합니다."
+        "설계 요구조건(R), 검사 기준(V), 실제 관측 근거(F)가 "
+        "충분히 확인되지 않거나 서로 같은 공학 상태를 설명하지 않는다면, "
+        "시스템은 결과를 억지로 만들지 않고 수학적 검증을 시작하지 않습니다."
     )
 
     if st.button(
-        "다른 Engineering PDF 분석하기",
+        "다른 공학 PDF 분석하기",
         type="primary",
         use_container_width=True,
         key="ford_to_generic_analysis",
@@ -2633,365 +2831,152 @@ AND NOT R(H)""",
 
     st.divider()
 
-    st.markdown("### 8. Validation Evidence")
+    st.markdown("### 8. 시스템을 어떻게 검증했나?")
 
     st.caption(
-        "TRUST · Ford 결과가 특정 숫자나 문서에 맞춘 "
-        "hardcoding이 아닌지, 그리고 근거가 부족한 경우 "
-        "시스템이 안전하게 멈추는지를 별도의 검증으로 확인합니다."
+        "Ford 사례 하나만 맞도록 만든 시스템이 아닌지, "
+        "잘못된 입력과 처음 보는 문서에서도 안전하게 동작하는지를 "
+        "별도의 테스트로 확인했습니다."
     )
 
-    from pathlib import Path as _ValidationPath
+    validation_row_1 = st.columns(2)
 
-    _validation_root = (
-        _ValidationPath(__file__).resolve().parents[2]
-    )
-
-    _fault_output_path = (
-        _validation_root
-        / "validation"
-        / "fault_injection_03"
-        / "prototype"
-        / "run_01_fault_injection_output.txt"
-    )
-
-    _mutation_test_path = (
-        _validation_root
-        / "tests"
-        / "test_anti_hardcoding_mutation.py"
-    )
-
-    _fault_output_text = ""
-
-    if _fault_output_path.exists():
-        _fault_output_text = _fault_output_path.read_text(
-            encoding="utf-8",
-            errors="replace",
-        )
-
-    _fault_lines = _fault_output_text.splitlines()
-
-    _fault_case_count = sum(
-        1
-        for line in _fault_lines
-        if line.startswith("T3-")
-        and " — " in line
-    )
-
-    _fault_pass_count = sum(
-        1
-        for line in _fault_lines
-        if line.strip() == "result: PASS"
-    )
-
-    _fault_assertion_count = 0
-
-    for line in _fault_lines:
-        if line.startswith("tests_run:"):
-            try:
-                _fault_assertion_count += int(
-                    line.split(":", 1)[1].strip()
-                )
-            except ValueError:
-                pass
-
-    _fault_official_pass = (
-        "RESULT: PASS" in _fault_output_text
-        and _fault_case_count == 8
-        and _fault_pass_count == 8
-    )
-
-    _mutation_text = ""
-
-    if _mutation_test_path.exists():
-        _mutation_text = _mutation_test_path.read_text(
-            encoding="utf-8",
-            errors="replace",
-        )
-
-    _mutation_test_count = sum(
-        1
-        for line in _mutation_text.splitlines()
-        if line.strip().startswith("def test_")
-    )
-
-    with st.container(border=True):
-        st.markdown("#### 검증 질문")
-
-        st.write(
-            "Ford에서 Verification Escape가 나온 이유가 "
-            "Ford용 숫자·파일명·case identity 때문인지, "
-            "아니면 입력된 Formal Model 자체 때문인지 검증합니다."
-        )
-
-        trust_metric_a, trust_metric_b, trust_metric_c = (
-            st.columns(3)
-        )
-
-        with trust_metric_a:
-            st.metric(
-                "Anti-hardcoding Checks",
-                str(_mutation_test_count)
-                if _mutation_test_count
-                else "—",
-            )
-
-        with trust_metric_b:
-            st.metric(
-                "Fault Injection Cases",
-                (
-                    f"{_fault_pass_count}/{_fault_case_count}"
-                    if _fault_case_count
-                    else "—"
-                ),
-            )
-
-        with trust_metric_c:
-            st.metric(
-                "Fault Assertions",
-                (
-                    str(_fault_assertion_count)
-                    if _fault_assertion_count
-                    else "—"
-                ),
-            )
-
-    trust_left, trust_right = st.columns(2)
-
-    with trust_left:
+    with validation_row_1[0]:
         with st.container(border=True):
-            st.markdown("#### 01 · Anti-hardcoding")
-
-            if _mutation_test_count >= 4:
-                st.success(
-                    "AUTOMATED MUTATION CHECKS · "
-                    + str(_mutation_test_count)
-                    + " TESTS"
-                )
-            else:
-                st.warning(
-                    "Mutation validation artifact를 "
-                    "완전히 확인하지 못했습니다."
-                )
-
+            st.markdown(
+                "#### 01 · 특정 숫자를 외운 시스템인가?"
+            )
+            st.success("아님 · 4개 변형 테스트 통과")
             st.write(
-                "입력 숫자를 바꾸었을 때 solver 결과가 "
-                "그에 따라 실제로 달라지는지 검증합니다."
+                "실제 가능한 범위와 설계 요구조건 등을 바꾸었을 때 "
+                "Solver 결과도 그에 따라 달라지는지 확인했습니다."
             )
 
-            st.markdown(
-                """
-- **Feasible Domain 변경**
-  escape가 존재하는 범위에서 안전한 범위로 바꾸면
-  `VERIFICATION_GAP_FOUND → NO_ESCAPE_FOUND`
-
-- **Requirement 변경**
-  requirement 상한을 넓히면
-  `VERIFICATION_GAP_FOUND → NO_ESCAPE_FOUND`
-
-- **변수 / 단위 일반성**
-  `P · MPa`, `T · degC` 등 Ford와 무관한 입력에서도 동작
-
-- **Case / Source identity 독립성**
-  case 이름과 source reference가 달라도 수학적 결과는 유지
-"""
-            )
-
-            st.caption(
-                "검증 대상 · "
-                "tests/test_anti_hardcoding_mutation.py"
-            )
-
-    with trust_right:
+    with validation_row_1[1]:
         with st.container(border=True):
             st.markdown(
-                "#### 02 · Controlled Fault Injection"
+                "#### 02 · 잘못된 입력에서 안전하게 멈추는가?"
             )
-
-            if _fault_official_pass:
-                st.success(
-                    "OFFICIAL FROZEN RUN · "
-                    + str(_fault_pass_count)
-                    + "/"
-                    + str(_fault_case_count)
-                    + " PASS"
-                )
-            else:
-                st.warning(
-                    "Official fault-injection artifact를 "
-                    "완전히 확인하지 못했습니다."
-                )
-
+            st.success("8/8 상황 안전 차단 · 14개 검증 항목 통과")
             st.write(
-                "잘못된 입력이나 불완전한 상태를 의도적으로 "
-                "주입하여 positive claim이 발생하지 않는지 검증합니다."
+                "근거 부족, 지원하지 않는 의미, 사람 검토 미완료, "
+                "Solver 판단 불가 등 오류 상황에서 "
+                "잘못된 확정 판정을 하지 않는지 확인했습니다."
             )
 
-            st.markdown(
-                """
-- Unsupported constraint semantics
-- External analysis required
-- Invalid Core input
-- Missing Feasible Evidence
-- Human Review incomplete
-- Solver UNKNOWN / timeout
-- Unsafe patch interpretation
-- Conflicting correction history
-"""
-            )
+    validation_row_2 = st.columns(2)
 
-            if _fault_assertion_count:
-                st.caption(
-                    "Official assertions · "
-                    + str(_fault_assertion_count)
-                )
-
-            st.caption(
-                "Frozen artifact · "
-                "validation/fault_injection_03/"
-                "prototype/run_01_fault_injection_output.txt"
-            )
-
-    boundary_left, boundary_right = st.columns(2)
-
-    with boundary_left:
+    with validation_row_2[0]:
         with st.container(border=True):
             st.markdown(
-                "#### 03 · Unseen Real Document"
+                "#### 03 · 처음 보는 실제 문서에서도 같은 원칙을 쓰는가?"
             )
-
-            st.info(
-                "Kyogle ATSB · 59-page real-world PDF"
-            )
-
+            st.info("Kyogle 실제 보고서 · 경계 동작 확인")
             st.write(
-                "Ford와 다른 분야·문서 구조의 실제 보고서를 "
-                "Generic Engine에 입력하여 document ingestion, "
-                "candidate discovery, provenance, grounding을 "
-                "확인했습니다."
+                "근거 후보 추출과 원문 추적은 수행했지만, "
+                "R / V / F가 서로 연결될 수 없다고 판단되어 "
+                "수학 모델 구성과 Solver 실행을 차단했습니다."
             )
 
-            st.markdown(
-                """
-**확인 결과**
-
-✓ 실제 문서에서 numeric evidence candidate 발견
-✓ Source provenance 확인
-✓ R / V / F 후보를 generic pipeline으로 처리
-✕ compatible independent R / V / F set은 확립되지 않음
-✕ Solver는 의도적으로 실행하지 않음
-"""
-            )
-
-            st.warning(
-                "BOUNDARY EVIDENCE · FORMALIZATION BLOCKED"
-            )
-
-            st.caption(
-                "이 결과는 두 번째 Verification Escape 사례가 아니라, "
-                "새 문서에서도 근거가 부족하면 solver를 차단하는 "
-                "fail-safe / generalization evidence입니다."
-            )
-
-    with boundary_right:
+    with validation_row_2[1]:
         with st.container(border=True):
             st.markdown(
-                "#### 04 · Semantic / Input Boundaries"
+                "#### 04 · 지원하지 않는 의미를 억지로 수식화하는가?"
             )
-
+            st.info("지원 범위를 벗어나면 판정 차단")
             st.write(
-                "수치가 존재한다는 이유만으로 unsupported semantics를 "
-                "억지로 scalar constraint로 변환하지 않는지 확인했습니다."
-            )
-
-            st.markdown(
-                """
-**Barnawartha**
-
-Conditional speed-band / lookup semantics
-→ current scalar schema로 lossless formalization 불가
-→ **BLOCKED**
-
-**Ely**
-
-Relational engineering semantics
-→ 현재 지원 범위 밖
-→ **BLOCKED**
-
-**Encrypted PDFs**
-
-지원되지 않는 encrypted input
-→ Core로 전달하지 않음
-→ **FAIL-SAFE**
-"""
-            )
-
-            st.warning(
-                "지원하지 않는 의미를 Verification Escape로 "
-                "재해석하지 않습니다."
-            )
-
-    st.markdown("#### Validation Interpretation")
-
-    interpretation_a, interpretation_b, interpretation_c = (
-        st.columns(3)
-    )
-
-    with interpretation_a:
-        with st.container(border=True):
-            st.markdown("**Ford**")
-            st.success("COMPLETE REAL-WORLD E2E")
-            st.caption(
-                "Source → R/V/F → Human Review → "
-                "Formal Model → Solver → Witness"
-            )
-
-    with interpretation_b:
-        with st.container(border=True):
-            st.markdown("**Generalization**")
-            st.info("BOUNDARY EVIDENCE")
-            st.caption(
-                "Unseen document에서 candidate extraction과 "
-                "provenance / blocking behavior를 검증"
-            )
-
-    with interpretation_c:
-        with st.container(border=True):
-            st.markdown("**Safety**")
-            st.success("FAIL-SAFE VALIDATED")
-            st.caption(
-                "Missing / unsupported / ambiguous / UNKNOWN 상태에서 "
-                "positive claim을 방지"
+                "조건부·관계형 의미처럼 현재 모델이 안전하게 표현할 수 없는 "
+                "내용은 억지로 단순한 수치 조건으로 바꾸지 않습니다."
             )
 
     st.info(
-        "검증 해석 · Ford는 완전한 real-world E2E flagship case입니다. "
-        "반면 범용성, anti-hardcoding, semantic boundary, fail-safe는 "
-        "별도의 mutation / unseen-document / fault-injection evidence로 "
-        "검증했습니다. 추가 공개 사례에서 full R / V / F 조건이 "
-        "성립하지 않은 경우에는 solver를 실행하지 않았습니다."
+        "검증 해석 · Ford는 실제 공개 문서에서 R / V / F 근거를 모두 연결해 "
+        "Solver 반례 상태까지 확인한 전체 검증 사례입니다. "
+        "다른 실제 문서와 오류 입력 테스트는 일반화 범위와 "
+        "안전 차단 동작을 확인하는 별도의 검증 근거입니다."
     )
 
     with st.expander(
-        "검증 근거 파일 확인 · Validation Artifacts",
+        "검증 코드와 실행 기록 직접 확인",
         expanded=False,
     ):
-        st.markdown("**Anti-hardcoding**")
-        st.code(
-            "tests/test_anti_hardcoding_mutation.py",
-            language=None,
+        st.caption(
+            "아래 경로는 실제 저장 위치이며, 파일이 존재하면 "
+            "버튼으로 원본 파일을 직접 내려받을 수 있습니다."
         )
 
-        st.markdown(
-            "**Controlled Fault Injection · Official Frozen Run**"
+        anti_path = (
+            _REPO_ROOT
+            / "tests"
+            / "test_anti_hardcoding_mutation.py"
         )
-        st.code(
-            "validation/fault_injection_03/"
-            "prototype/run_01_fault_injection_output.txt",
-            language=None,
+
+        fault_path = (
+            _REPO_ROOT
+            / "validation"
+            / "fault_injection_03"
+            / "prototype"
+            / "run_01_fault_injection_output.txt"
         )
+
+        artifact_left, artifact_right = st.columns(2)
+
+        with artifact_left:
+            st.markdown("**특정 값 의존성 검증 코드**")
+            st.code(
+                "tests/test_anti_hardcoding_mutation.py",
+                language=None,
+            )
+
+            if anti_path.exists():
+                st.download_button(
+                    "검증 코드 다운로드",
+                    data=anti_path.read_bytes(),
+                    file_name=anti_path.name,
+                    mime="text/x-python",
+                    key="download_anti_hardcoding_test",
+                    use_container_width=True,
+                )
+            else:
+                st.warning("현재 실행 환경에서 파일을 찾을 수 없습니다.")
+
+        with artifact_right:
+            st.markdown("**오류 입력 안전성 검증 기록**")
+            st.code(
+                "validation/fault_injection_03/"
+                "prototype/run_01_fault_injection_output.txt",
+                language=None,
+            )
+
+            if fault_path.exists():
+                st.download_button(
+                    "검증 기록 다운로드",
+                    data=fault_path.read_bytes(),
+                    file_name=fault_path.name,
+                    mime="text/plain",
+                    key="download_fault_injection_log",
+                    use_container_width=True,
+                )
+            else:
+                st.warning("현재 실행 환경에서 파일을 찾을 수 없습니다.")
+
+        _fault_output_text = ""
+        _fault_lines = []
+
+        if fault_path.exists():
+            try:
+                _fault_output_text = fault_path.read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                _fault_lines = _fault_output_text.splitlines()
+            except OSError:
+                _fault_output_text = ""
+                _fault_lines = []
 
         if _fault_output_text:
+            st.markdown("**공식 실행 결과 요약**")
+
             _fault_summary_lines = [
                 line
                 for line in _fault_lines
@@ -3009,83 +2994,104 @@ Relational engineering semantics
                     language=None,
                 )
 
-        st.caption(
-            "Ford solver의 official frozen run은 위 Ford walkthrough의 "
-            "Deterministic Verification 결과와 별도로 보존되어 있습니다."
-        )
-
     st.stop()
 
 
 if not ford_mode:
-    st.subheader("Analyze Your Document")
+
+    st.subheader("내 문서 분석하기")
 
     with st.container(border=True):
-        st.markdown("#### 분석 가능 범위")
+
+        st.markdown("#### 어떤 문서를 분석할 수 있나요?")
 
         st.write(
-            "EVST는 다양한 Engineering PDF에서 "
-            "설계 요구조건(R), 검사·합격 기준(V), "
-            "실제 관측 근거(F)를 찾습니다."
+            "EVST는 다양한 공학 PDF에서 "
+            "설계 요구조건(R), 실제 검사·합격 기준(V), "
+            "측정·시험 등 실제 관측 근거(F)를 찾습니다."
         )
 
         st.caption(
-            "원문 근거가 확인되고, R / V / F가 같은 engineering state로 "
-            "안전하게 연결될 때만 Formal Verification을 수행합니다."
+            "원문 근거가 확인되고 R / V / F가 같은 공학 상태를 "
+            "설명한다고 판단될 때만 수학적 검증 단계로 진행합니다."
         )
 
         st.info(
             "모든 PDF에서 Verification Escape가 발견되는 것은 아닙니다. "
-            "필요한 근거가 없거나, 의미가 불명확하거나, "
-            "서로 연결되지 않으면 Formalization 단계에서 안전하게 차단합니다."
+            "필요한 근거가 부족하거나 의미가 불명확하거나, "
+            "서로 다른 공학 항목을 설명하는 근거라면 "
+            "수학 모델을 만들기 전에 안전하게 차단합니다."
         )
 
-        st.markdown("**분석 결과는 다음 세 가지 중 하나가 될 수 있습니다.**")
+        st.markdown(
+            "**분석 결과는 다음 세 가지 중 하나입니다.**"
+        )
 
         result_found, result_none, result_blocked = st.columns(3)
 
         with result_found:
+
             with st.container(border=True):
-                st.markdown("**Verification Escape 발견**")
+
+                st.markdown(
+                    "**Verification Escape 발견**"
+                )
+
                 st.caption(
-                    "검사는 통과하지만 실제 engineering requirement를 "
-                    "위반하는 상태가 존재합니다."
+                    "실제 가능한 상태 중 검사 기준은 통과하지만 "
+                    "설계 요구조건을 위반하는 상태가 존재합니다."
                 )
 
         with result_none:
+
             with st.container(border=True):
-                st.markdown("**Escape 없음**")
+
+                st.markdown(
+                    "**Verification Escape 없음**"
+                )
+
                 st.caption(
-                    "R / V / F Formal Model은 성립하지만 "
-                    "Verification Escape는 존재하지 않습니다."
+                    "R / V / F 수학 모델은 성립하지만 "
+                    "검사 기준을 통과하면서 설계 요구조건을 "
+                    "위반하는 상태는 발견되지 않습니다."
                 )
 
         with result_blocked:
+
             with st.container(border=True):
-                st.markdown("**Formalization 차단**")
+
+                st.markdown(
+                    "**수학 모델 구성 차단**"
+                )
+
                 st.caption(
                     "근거 부족, 의미 불명확, 변수·단위 불일치 등으로 "
-                    "안전한 Formal Model을 만들 수 없습니다."
+                    "신뢰할 수 있는 수학 모델을 만들 수 없는 상태입니다."
                 )
 
     st.caption(
-        "EVST는 특정 Ford 문서나 특정 숫자에 맞춘 시스템이 아니라, "
-        "지원되는 engineering constraint 구조와 source provenance를 "
-        "기준으로 분석합니다."
+        "EVST는 특정 Ford 문서나 특정 수치에 맞춘 시스템이 아니라, "
+        "지원되는 공학 제약조건 구조와 원문 근거를 기준으로 분석합니다."
     )
 
     st.caption(
-        "Upload one engineering PDF. The same immutable source is "
-        "automatically examined through Requirement, Verification, "
-        "and Observed Evidence lenses."
+        "공학 PDF 한 개를 업로드하면 동일한 원본 문서에서 "
+        "설계 요구조건, 검사 기준, 실제 관측 근거 후보를 각각 탐색합니다."
     )
 
     uploaded_source = st.file_uploader(
-        "Engineering PDF",
+        "공학 PDF",
         type=["pdf"],
         accept_multiple_files=False,
         key="engineering_single_source_upload",
     )
+
+    st.info(
+        "🔒 보안 안내 · 분석 과정에서 문서의 텍스트 또는 일부 페이지가 "
+        "OpenAI API로 전송될 수 있습니다. 사내 기밀·보안 문서는 "
+        "회사 정책상 외부 AI 서비스 이용이 허용된 경우에만 업로드해 주세요."
+    )
+
 
     if uploaded_source is not None:
         raw_bytes = uploaded_source.getvalue()
@@ -3135,7 +3141,7 @@ if not ford_mode:
 
             with lens_columns[2]:
                 st.info(
-                    "Observed Evidence Lens\n\n"
+                    "실제 관측 근거 Lens\n\n"
                     "Searches for actual measured, tested, "
                     "manufactured, or observed states."
                 )
@@ -3341,8 +3347,8 @@ if not ford_mode:
 
     else:
         st.info(
-            "Upload one original engineering PDF to begin "
-            "Automatic Evidence Discovery."
+            "공학 PDF 한 개를 업로드하면 "
+            "문서 근거 탐색을 시작합니다."
         )
 
 
@@ -3885,7 +3891,7 @@ if analysis is not None:
         (
             "Stage 01의 동일한 원본 source를 여러 "
             "engineering lens로 분석한 Candidate와 "
-            "source provenance를 제시합니다."
+            "source 원문 추적를 제시합니다."
         ),
     )
 
@@ -4041,7 +4047,7 @@ if analysis is not None:
     )
 
     st.caption(
-        "Requirement → Verification → Observed Evidence 순서로 "
+        "Requirement → Verification → 실제 관측 근거 순서로 "
         "하나의 검증 근거 세트를 구성합니다. "
         "현재 단계에 필요한 후보만 기본 화면에 표시합니다."
     )
@@ -4063,7 +4069,7 @@ if analysis is not None:
             )
 
             requirement_change = st.button(
-                "Requirement 변경",
+                "설계 요구조건 변경",
                 key="builder_change_requirement",
                 use_container_width=True,
             )
@@ -4191,7 +4197,7 @@ if analysis is not None:
 
     with builder_f:
         st.markdown(
-            "**③ 실제 관측 근거 · Observed Evidence**"
+            "**③ 실제 관측 근거 · 실제 관측 근거**"
         )
 
         if guided_feasible_candidate is not None:
@@ -4204,7 +4210,7 @@ if analysis is not None:
             )
 
             feasible_change = st.button(
-                "Observed Evidence 변경",
+                "실제 관측 근거 변경",
                 key="builder_change_feasible",
                 use_container_width=True,
             )
@@ -4284,10 +4290,10 @@ if analysis is not None:
         )
 
     elif guided_feasible_candidate is None:
-        candidate_category = "Observed Evidence"
+        candidate_category = "실제 관측 근거"
 
         render_review_focus(
-            "③ Observed Evidence 선택",
+            "③ 실제 관측 근거 선택",
             (
                 "현재 Requirement / Verification과 연결되는 "
                 "실제 측정·시험 근거를 검토합니다."
@@ -4316,7 +4322,7 @@ if analysis is not None:
         stage_label = {
             "Requirement": "Requirement 후보",
             "Verification": "Verification 후보",
-            "Observed Evidence": "Observed Evidence 후보",
+            "실제 관측 근거": "실제 관측 근거 후보",
         }[
             candidate_category
         ]
@@ -4359,17 +4365,17 @@ if analysis is not None:
         )
     )
 
-    if candidate_category == "Observed Evidence":
+    if candidate_category == "실제 관측 근거":
         if feasible_analysis is not None:
             st.subheader(
                 "관측 근거 추출 결과 "
-                "(Observed Evidence Candidates)"
+                "(실제 관측 근거 Candidates)"
             )
 
             st.caption(
                 "AI는 후보만 제안합니다. PDF 원문 위치와 의미를 "
                 "확인한 뒤 Engineer Approval이 있어야 다음 단계에서 "
-                "Feasible Domain 입력 후보로 사용할 수 있습니다."
+                "실제 가능한 범위(F) 입력 후보로 사용할 수 있습니다."
             )
 
             feasible_analysis = deepcopy(
@@ -4537,7 +4543,7 @@ if analysis is not None:
             if not feasible_analysis.candidates:
                 st.info(
                     "업로드한 source에서 지원 가능한 "
-                    "Observed Evidence 후보를 찾지 못했습니다."
+                    "실제 관측 근거 후보를 찾지 못했습니다."
                 )
 
             for feasible_index, feasible_candidate in enumerate(
@@ -4561,7 +4567,7 @@ if analysis is not None:
 
                 feasible_candidate_title = (
                     build_candidate_review_title(
-                        proposed_role="Observed Evidence",
+                        proposed_role="실제 관측 근거",
                         extraction=extraction,
                         grounding=feasible_grounding,
                         source_name=(
@@ -4602,7 +4608,7 @@ if analysis is not None:
                     expanded=candidate_details_expanded,
                 ):
                     st.caption(
-                        "PROPOSED ROLE · Observed Evidence"
+                        "PROPOSED ROLE · 실제 관측 근거"
                     )
                     source_column, data_column = (
                         st.columns(2)
@@ -4936,7 +4942,7 @@ if analysis is not None:
 
                             st.caption(
                                 "이 원문 근거는 이번 Formal Model의 "
-                                "Observed Evidence로 선택되어 있습니다."
+                                "실제 관측 근거로 선택되어 있습니다."
                             )
 
                             revoke_feasible = st.button(
@@ -4975,7 +4981,7 @@ if analysis is not None:
                             )
 
                             select_feasible = st.button(
-                                "이 근거를 Observed Evidence로 사용",
+                                "이 근거를 실제 관측 근거로 사용",
                                 type="primary",
                                 key=(
                                     "feasible_select_button_"
@@ -4987,7 +4993,7 @@ if analysis is not None:
 
                             if select_feasible:
                                 # Guided Review uses exactly one
-                                # Observed Evidence candidate.
+                                # 실제 관측 근거 candidate.
                                 feasible_approved_candidate_ids = [
                                     feasible_candidate.candidate_id
                                 ]
@@ -5043,7 +5049,7 @@ if analysis is not None:
 
             if feasible_approved_candidate_ids:
                 st.success(
-                    "선택된 Observed Evidence 후보 · "
+                    "선택된 실제 관측 근거 후보 · "
                     + str(
                         len(
                             feasible_approved_candidate_ids
@@ -6118,7 +6124,7 @@ if analysis is not None:
         ),
         (
             completeness_columns[2],
-            "Observed Evidence",
+            "실제 관측 근거",
             role_completeness
             .feasible_candidate_count,
             role_completeness
@@ -6159,7 +6165,7 @@ if analysis is not None:
     if role_set_ready:
         st.success(
             "Role Set Complete ✓ · "
-            "Requirement / Verification / Observed Evidence가 "
+            "Requirement / Verification / 실제 관측 근거가 "
             "각각 선택되었습니다."
         )
 
@@ -6261,7 +6267,7 @@ if analysis is not None:
             )
 
         with evidence_columns[2]:
-            st.markdown("**Observed Evidence**")
+            st.markdown("**실제 관측 근거**")
             st.write(
                 format_candidate_review_summary(
                     (
@@ -6272,11 +6278,11 @@ if analysis is not None:
                 )
             )
 
-        st.markdown("#### Observed Evidence 연결 진단")
+        st.markdown("#### 실제 관측 근거 연결 진단")
 
         st.caption(
             "현재 선택된 Requirement / Verification을 기준으로 "
-            "Observed Evidence 후보가 같은 engineering state로 "
+            "실제 관측 근거 후보가 같은 engineering state로 "
             "연결될 수 있는지 확인합니다."
         )
 
@@ -6345,12 +6351,12 @@ if analysis is not None:
 
             st.caption(
                 "현재 선택한 R과 V가 서로 다른 변수 또는 단위를 "
-                "가리키므로, Observed Evidence와의 연결 여부를 "
+                "가리키므로, 실제 관측 근거와의 연결 여부를 "
                 "확정하지 않습니다."
             )
 
             st.info(
-                "Observed Evidence 후보는 그대로 유지됩니다. "
+                "실제 관측 근거 후보는 그대로 유지됩니다. "
                 "먼저 Requirement / Verification 조합을 다시 검토하거나, "
                 "Engineer Review에서 engineering state의 동일성을 "
                 "확인해야 합니다."
@@ -6360,7 +6366,7 @@ if analysis is not None:
             if direct_feasible_candidates:
                 st.success(
                     "현재 R / V와 바로 연결 가능한 "
-                    "Observed Evidence 후보 · "
+                    "실제 관측 근거 후보 · "
                     + str(
                         len(
                             direct_feasible_candidates
@@ -6376,7 +6382,7 @@ if analysis is not None:
 
             elif review_feasible_candidates:
                 st.warning(
-                    "바로 연결 가능한 Observed Evidence는 없지만, "
+                    "바로 연결 가능한 실제 관측 근거는 없지만, "
                     "Engineer Review가 필요한 후보가 "
                     + str(
                         len(
@@ -6404,7 +6410,7 @@ if analysis is not None:
                 )
 
                 st.caption(
-                    "Observed Evidence 후보 자체는 발견되었지만, "
+                    "실제 관측 근거 후보 자체는 발견되었지만, "
                     "현재 선택된 Requirement / Verification과 "
                     "같은 engineering state로 바로 연결할 수 있는 "
                     "후보는 확인되지 않았습니다."
@@ -6416,7 +6422,7 @@ if analysis is not None:
 
                 with candidate_count_left:
                     st.metric(
-                        "Observed Evidence 후보",
+                        "실제 관측 근거 후보",
                         len(
                             feasible_connection_states
                         ),
@@ -6430,7 +6436,7 @@ if analysis is not None:
 
                 st.info(
                     "후보는 삭제되거나 숨겨지지 않습니다. "
-                    "다른 Observed Evidence 후보를 검토하거나 "
+                    "다른 실제 관측 근거 후보를 검토하거나 "
                     "Engineer Review에서 engineering state의 "
                     "동일성을 확인할 수 있습니다. "
                     "확인 전에는 Formalization을 진행하지 않습니다."
@@ -6438,7 +6444,7 @@ if analysis is not None:
 
             else:
                 st.error(
-                    "Observed Evidence 후보를 확인하지 못했습니다."
+                    "실제 관측 근거 후보를 확인하지 못했습니다."
                 )
 
                 st.caption(
@@ -6464,7 +6470,7 @@ if analysis is not None:
 
             if selected_feasible_connection_state == "MISMATCH":
                 st.error(
-                    "현재 선택한 Observed Evidence는 "
+                    "현재 선택한 실제 관측 근거는 "
                     "R / V와 변수 또는 단위가 일치하지 않습니다."
                 )
 
@@ -6475,7 +6481,7 @@ if analysis is not None:
 
             elif selected_feasible_connection_state == "REVIEW":
                 st.warning(
-                    "현재 선택한 Observed Evidence의 "
+                    "현재 선택한 실제 관측 근거의 "
                     "공학적 동일성 확인이 필요합니다."
                 )
 
@@ -6538,7 +6544,7 @@ if analysis is not None:
                 + (requirement_unit or "UNIT MISSING")
                 + " | Verification · "
                 + (verification_unit or "UNIT MISSING")
-                + " | Observed Evidence · "
+                + " | 실제 관측 근거 · "
                 + (feasible_unit or "UNIT MISSING")
             )
 
@@ -6578,7 +6584,7 @@ if analysis is not None:
             )
 
             mapping_right.metric(
-                "Observed Evidence",
+                "실제 관측 근거",
                 feasible_variable or "—",
             )
 
@@ -6666,12 +6672,12 @@ if analysis is not None:
             "승인된 engineering semantics와 source-bound feasible evidence를 검토해 Formal Verification Model을 구성합니다.",
         )
         render_soft_note(
-            "Variable mapping과 source provenance를 검토한 뒤 승인된 값만 deterministic verification으로 전달합니다."
+            "Variable mapping과 source 원문 추적를 검토한 뒤 승인된 값만 deterministic verification으로 전달합니다."
         )
 
         st.caption(
             "추출된 공학 변수를 검토하고 현실 가능 범위 "
-            "(Feasible Domain)를 공학적 근거와 함께 확인합니다."
+            "(실제 가능한 범위(F))를 공학적 근거와 함께 확인합니다."
         )
 
         targets = (
@@ -7058,7 +7064,7 @@ if analysis is not None:
                 if source_bound is not None:
                     st.markdown(
                         "#### 현실 가능 범위 검토 "
-                        "(Feasible Domain Review)"
+                        "(실제 가능한 범위(F) Review)"
                     )
 
                     min_col, max_col, unit_col = (
@@ -7086,7 +7092,7 @@ if analysis is not None:
                     )
 
                     st.markdown(
-                        "**Formal Feasible Domain** · "
+                        "**Formal 실제 가능한 범위(F)** · "
                         f"`{source_bound['min']} ≤ "
                         f"{canonical_display} ≤ "
                         f"{source_bound['max']} "
@@ -7162,7 +7168,7 @@ if analysis is not None:
 
                     with st.expander(
                         "Advanced · Engineer-Supplied "
-                        "Feasible Domain"
+                        "실제 가능한 범위(F)"
                     ):
                         unit = st.text_input(
                             "공학 단위 (Engineering Unit)",
@@ -7627,7 +7633,7 @@ if analysis is not None:
                     ):
                         raise ValueError(
                             "동일 Canonical Variable ID에 "
-                            "서로 다른 Feasible Domain "
+                            "서로 다른 실제 가능한 범위(F) "
                             "정보가 입력되었습니다: "
                             f"{canonical_id}"
                         )
@@ -7834,7 +7840,7 @@ if (
     )
 
     st.success(
-        "Variable Mapping과 Feasible Domain이 "
+        "Variable Mapping과 실제 가능한 범위(F)이 "
         "Formal Verification Workflow 입력으로 준비되었습니다."
     )
 
@@ -7871,7 +7877,7 @@ if (
         model_rows.append(
             {
                 "구분":
-                    "현실 가능 범위 (Feasible Domain)",
+                    "현실 가능 범위 (실제 가능한 범위(F))",
                 "공학 모델": (
                     f"{spec.feasible_min} ≤ "
                     f"{variable_id} ≤ "
@@ -7895,7 +7901,7 @@ if (
 
     st.caption(
         "Requirement와 Verification 값은 승인된 문서 추출 "
-        "결과에서 자동으로 연결됩니다. Feasible Domain은 "
+        "결과에서 자동으로 연결됩니다. 실제 가능한 범위(F)은 "
         "승인된 PDF Source-Bound Operating Evidence 또는 "
         "Engineer-Supplied Evidence에서 구성됩니다."
     )
@@ -8162,7 +8168,7 @@ if (
             with pipeline_right:
                 st.success(
                     "✓ 현실 가능 범위 근거 "
-                    "(Feasible Domain Evidence)"
+                    "(실제 가능한 범위(F) Evidence)"
                 )
 
                 if run_enabled:
@@ -8413,7 +8419,7 @@ if verification_result is not None:
 
                     with check_left:
                         st.success(
-                            "현실 가능 범위 (Feasible Domain) · PASS"
+                            "현실 가능 범위 (실제 가능한 범위(F)) · PASS"
                         )
 
                     with check_mid:
@@ -8572,7 +8578,7 @@ if verification_result is not None:
 
             st.caption(
                 "이 결과는 현재 모델링된 Requirement, "
-                "Verification Criterion, Feasible Domain 및 "
+                "Verification Criterion, 실제 가능한 범위(F) 및 "
                 "지원되는 분석 범위에 한정됩니다. "
                 "제품 안전성에 대한 최종 판정이 아닙니다."
             )
@@ -8756,7 +8762,7 @@ if verification_result is not None:
 
                 if variable_spec is not None:
                     st.markdown(
-                        "**현실 가능 범위 (Feasible Domain)**"
+                        "**현실 가능 범위 (실제 가능한 범위(F))**"
                     )
                     st.markdown(
                         "### "
@@ -8828,7 +8834,7 @@ if verification_result is not None:
                     )
 
                 st.info(
-                    "이 Feasible Domain은 Operating Evidence에서 "
+                    "이 실제 가능한 범위(F)은 Operating Evidence에서 "
                     "추출된 후보를 엔지니어가 검토·승인한 후 "
                     "Formal Model에 적용한 값입니다. "
                     "AI extraction alone does not authorize F."

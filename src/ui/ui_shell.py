@@ -1076,26 +1076,29 @@ def inject_ui_shell_css() -> None:
 
 
 def render_hero_banner() -> None:
+    hero_html = "".join([
+        '<div class="ev-hero">',
+        '<div class="ev-hero-topline">',
+        'ENGINEERING VERIFICATION STRESS TEST · EVIDENCE-GROUNDED',
+        '</div>',
+        '<h1>공학 검증 스트레스 테스트</h1>',
+        '<p>',
+        '설계 요구조건, 실제 검사 기준, 측정·시험 근거를 공학 문서에서 찾아 연결하고, ',
+        '엔지니어가 근거를 검토한 뒤 Solver를 이용해 ',
+        '검사에는 합격하지만 설계 요구조건을 위반하는 상태가 ',
+        '존재하는지 확인하는 시스템입니다.',
+        '</p>',
+        '<div class="ev-hero-chip-row">',
+        '<div class="ev-hero-chip">① 원문 근거 찾기</div>',
+        '<div class="ev-hero-chip">② 공학 의미 확인</div>',
+        '<div class="ev-hero-chip">③ 엔지니어 검토</div>',
+        '<div class="ev-hero-chip">④ 수학적 검증</div>',
+        '</div>',
+        '</div>',
+    ])
+
     st.markdown(
-        """
-        <div class="ev-hero">
-            <div class="ev-hero-topline">
-                Engineering Verification Stress Test · Evidence-Grounded
-            </div>
-            <h1>공학 검증 스트레스 테스트</h1>
-            <p>
-                실제 공학 문서에서 Requirement, Verification Criterion,
-                Observed Evidence를 추적하고, Role Grounding과 엔지니어 검토를 거쳐
-                결정론적 solver로 Verification Escape 여부를 판정합니다.
-            </p>
-            <div class="ev-hero-chip-row">
-                <div class="ev-hero-chip">원본 근거 · Document Evidence</div>
-                <div class="ev-hero-chip">공학 의미 분석 · Semantics</div>
-                <div class="ev-hero-chip">엔지니어 검토 · Review</div>
-                <div class="ev-hero-chip">결정론적 검증 · Verification</div>
-            </div>
-        </div>
-        """,
+        hero_html,
         unsafe_allow_html=True,
     )
 
