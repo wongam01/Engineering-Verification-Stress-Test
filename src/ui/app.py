@@ -101,6 +101,11 @@ from src.core.models import (
     EngineeringCase,
 )
 
+import importlib
+import src.ui.ui_shell as _ui_shell
+
+importlib.reload(_ui_shell)
+
 from src.ui.ui_shell import (
     inject_ui_shell_css,
     render_hero_banner,
