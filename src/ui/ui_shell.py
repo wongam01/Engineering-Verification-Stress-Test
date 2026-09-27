@@ -1079,9 +1079,9 @@ def render_hero_banner() -> None:
     hero_html = "".join([
         '<div class="ev-hero">',
         '<div class="ev-hero-topline">',
-        'ENGINEERING VERIFICATION STRESS TEST · EVIDENCE-GROUNDED',
+        'ENGINEERING VERIFICATION GAP DETECTION · EVIDENCE-GROUNDED',
         '</div>',
-        '<h1>공학 검증 스트레스 테스트</h1>',
+        '<h1>공학 검증 사각지대 탐지 시스템</h1>',
         '<p>',
         '설계 요구조건, 실제 검사 기준, 측정·시험 근거를 공학 문서에서 찾아 연결하고, ',
         '엔지니어가 근거를 검토한 뒤 Solver를 이용해 ',
