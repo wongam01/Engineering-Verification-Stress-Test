@@ -1,346 +1,229 @@
-# Engineering Verification Stress Test
+# 공학 검증 사각지대 탐지 시스템
 
-> **제품을 검사하는 것이 아니라,  
-> 제품을 검사하는 ‘검증 기준 자체가 충분한지’를 먼저 검증합니다.**
+> **검사에는 합격했는데, 설계 기준은 어길 수 있을까?**
 
-**Engineering Verification Stress Test (EVST)**는 기존 Engineering Document에서  
-설계 요구조건, 실제 검사·합격 기준, 실제 관측 근거를 구조화하고,
+설계 요구조건, 실제 검사 기준, 측정·시험 근거를 공학 문서에서 찾아 서로 연결하고,  
+**검사에는 합격하지만 설계 요구조건을 위반하는 상태가 실제로 가능한지 탐지하는 공학 검증 시스템**입니다.
 
-> **“현실적으로 가능한 상태인데 검사에는 합격하고, 실제 설계 요구조건은 위반하는 상태가 존재하는가?”**
-
-를 검증하는 Engineering Assurance prototype입니다.
-
-AI는 문서를 읽고 근거를 구조화하는 **Semantic Bridge** 역할을 담당하며,  
-최종 판단은 Engineer Review를 거친 Formal Model과  
-결정론적인 Validator / Z3 Solver가 수행합니다.
+AI는 문서에서 필요한 근거를 찾고 구조화하며,  
+최종 판정은 엔지니어 검토를 거친 수학 모델과 결정론적 Solver가 수행합니다.
 
 ---
 
-## 핵심 아이디어
+## 🔍 왜 필요한가?
 
-EVST가 찾는 상태는 다음과 같습니다.
+현장에서 사용하는 검사 기준이 설계 요구조건을 항상 완전히 보장하는 것은 아닙니다.
+
+예를 들어 다음 세 조건이 동시에 성립할 수 있습니다.
+
+- ✅ 실제 측정·시험에서 발생 가능한 상태
+- ✅ 현재 검사 기준에는 합격
+- ❌ 실제 설계 요구조건은 위반
+
+본 시스템은 이러한 **검증 사각지대**를 공학 문서에서 찾아 검증합니다.
+
+---
+
+## ⚙️ 핵심 기능
+
+- 📄 공학 PDF에서 **설계 요구조건·검사 기준·실제 관측 근거 탐색**
+- 🔎 추출한 근거를 **원문 페이지와 연결**
+- 👤 엔지니어가 근거의 의미와 역할을 직접 검토
+- 🧩 서로 같은 공학 변수를 설명하는 조건 연결
+- 📐 승인된 근거를 수학적 제약조건으로 변환
+- ✅ Validator와 Z3 Solver를 이용한 결정론적 검증
+- 🛑 근거 부족·의미 불명확·지원하지 않는 조건은 안전하게 차단
+
+---
+
+## 🔄 동작 과정
+
+```text
+공학 PDF
+   ↓
+원문 근거 탐색
+   ↓
+설계 요구조건 / 검사 기준 / 실제 관측 근거 구분
+   ↓
+엔지니어 검토
+   ↓
+수학 모델 구성
+   ↓
+Validator + Solver 검증
+   ↓
+검증 사각지대 발견 / 없음 / 검증 중단
+```
+
+역할은 다음과 같이 분리됩니다.
+
+```text
+AI
+→ 문서에서 근거 후보 탐색 및 구조화
+
+Engineer
+→ 근거의 의미와 역할 검토
+
+Solver
+→ 승인된 수학 모델을 이용해 최종 검증
+```
+
+**AI가 최종 공학 판정을 직접 내리지 않습니다.**
+
+---
+
+## 📌 핵심 개념
+
+본 시스템이 찾는 상태는 다음과 같습니다.
 
 ```text
 ∃x : F(x) ∧ V(x) ∧ ¬R(x)
 ```
 
-- **R(x) — Requirement**  
-  실제 제품이나 시스템이 만족해야 하는 Engineering Requirement
-
-- **V(x) — Verification**  
-  현장에서 사용되는 Inspection / Test / Acceptance Criterion
-
-- **F(x) — Feasible / Observed Evidence**  
-  시험, 측정, 생산 기록 등 실제 문서 근거로 확인된 Engineering State
+| 기호 | 의미 |
+|---|---|
+| **R** | 실제로 만족해야 하는 설계 요구조건 |
+| **V** | 현장에서 사용하는 검사·시험·합격 기준 |
+| **F** | 측정·시험·생산 기록 등에서 확인된 실제 관측 근거 |
 
 즉,
 
-```text
-실제로 가능한 상태
-        AND
-현재 검사에는 합격
-        AND
-실제 설계 요구조건은 위반
-```
+> **실제로 가능하고(F), 검사에는 합격하지만(V), 설계 요구조건은 위반하는(R) 상태**
 
-하는 상태가 존재하면 이를 **Verification Escape**라고 정의합니다.
+가 존재하는지를 확인합니다.
+
+프로젝트 내부에서는 이러한 상태를 **Verification Escape**라고 정의합니다.
 
 ---
 
-## 핵심 용어
+## 🧪 실제 사례 검증
 
-| 용어 | 의미 |
-|---|---|
-| **Requirement (R)** | 실제로 만족해야 하는 설계·기술 요구조건 |
-| **Verification (V)** | 현장에서 사용하는 검사·시험·합격 기준 |
-| **Observed / Feasible Evidence (F)** | 실제 측정·시험·생산 기록 등에서 확인된 상태 |
-| **Verification Escape** | `F ∧ V ∧ ¬R`를 만족하는 상태 |
-| **Evidence Candidate** | AI가 문서에서 발견한 R / V / F 근거 후보 |
-| **Role Grounding** | Candidate가 실제 R / V / F 역할에 해당하는지 source context를 기반으로 검토하는 과정 |
-| **Engineer Review** | Source, Role, Variable Mapping, Evidence 사용 여부를 사람이 확인하는 단계 |
-| **Formalization** | 승인된 근거를 `R(x), V(x), F(x)` 형태로 변환하는 과정 |
-| **Witness** | Verification Escape를 실제로 만족하는 구체적인 값 |
+### Ford Nano 흡기밸브 경도 사례
 
----
-
-## 전체 흐름
+공개된 Ford / NHTSA 공학 문서를 이용해 전체 분석 과정을 검증했습니다.
 
 ```text
-Engineering PDF
-        ↓
-Source Intake
-        ↓
-Text / Vision Recovery
-        ↓
-AI Evidence Discovery
-(R / V / F Candidates)
-        ↓
-Role Grounding
-        ↓
-Engineer Review
-        ↓
-Source Provenance
-+ Variable Mapping
-        ↓
-Formalization
-R(x), V(x), F(x)
-        ↓
-Strict Validator
-        ↓
-Z3 Deterministic Verification
-        ↓
-Witness / Result
-        ↓
-Evidence Trace
+설계 요구조건
+50 ≤ H ≤ 57 HRC
+
+당시 검사 기준
+H ≥ 50 HRC
+
+실제 관측 근거
+58 ≤ H ≤ 60 HRC
 ```
 
-EVST에서는 역할을 의도적으로 분리합니다.
-
-```text
-AI
-= Semantic Bridge
-
-Engineer
-= Evidence / Role Review
-
-Deterministic Core
-= Formal Validation + Solver
-```
-
-AI가 최종 Verification Escape를 결정하지 않습니다.
-
----
-
-## 사용 방법
-
-현재 UI에서는 두 가지 경로를 제공합니다.
-
-### 1. Validated Real-World Case
-
-실제 공개 산업문서를 이용한  
-**Ford Nano Intake Valve Hardness** 사례를 통해 전체 pipeline을 확인할 수 있습니다.
-
-```text
-Source PDF
-→ Evidence Discovery
-→ Role Grounding
-→ Engineer Review
-→ Formalization
-→ Solver
-→ Evidence Trace
-```
-
-원문 PDF와 실제 source page도 UI에서 확인할 수 있습니다.
-
-### 2. Analyze Your Document
-
-새로운 Engineering PDF를 업로드하여 동일한 Generic Pipeline을 실행할 수 있습니다.
-
-```text
-Upload PDF
-→ Candidate Discovery
-→ Grounding
-→ Engineer Review
-→ Compatibility Check
-→ Formalization
-→ Verification
-```
-
-단,
-
-> **모든 PDF에서 Verification Escape가 발견되는 것은 아닙니다.**
-
-근거가 부족하거나 의미가 불명확하거나  
-R / V / F가 같은 Engineering State로 연결되지 않는 경우에는
-
-```text
-FORMALIZATION BLOCKED
-```
-
-상태에서 안전하게 멈춥니다.
-
----
-
-## Ford Validated Case
-
-Ford Nano Intake Valve 사례에서 구성한 Formal Model은 다음과 같습니다.
-
-### Requirement
-
-```text
-R(H) := 50 ≤ H ≤ 57 HRC
-```
-
-### Historical Verification
-
-```text
-V(H) := H ≥ 50 HRC
-```
-
-### Observed Evidence
-
-```text
-F(H) := 58 ≤ H ≤ 60 HRC
-```
-
-Solver query:
-
-```text
-∃H : F(H) ∧ V(H) ∧ ¬R(H)
-```
-
-확인된 witness:
+Solver가 확인한 상태:
 
 ```text
 H = 60 HRC
+
+✅ 실제 관측 범위 안
+✅ 당시 검사 기준 통과
+❌ 설계 요구조건 위반
 ```
 
-결과:
+따라서 해당 수학 모델에서는 **검증 사각지대가 존재함**을 확인했습니다.
 
-```text
-F(60) = PASS
-V(60) = PASS
-R(60) = FAIL
-```
-
-따라서 해당 Formal Model에서는 **Verification Escape가 존재합니다.**
-
-> `58–60 HRC`는 전체 manufacturing domain이 아니라  
-> 문서에서 확인된 Observed Evidence Envelope입니다.
+> 58–60 HRC는 전체 제조 가능 범위가 아니라  
+> 공개 문서에서 실제로 확인된 관측 근거 범위입니다.
 
 ---
 
-## Validation Evidence
+### Haldex / ZF 주차 브레이크 사례
 
-Ford 한 사례에 맞춘 hardcoding이 아닌지,  
-그리고 불완전한 입력에서 시스템이 안전하게 동작하는지를 별도로 검증했습니다.
-
-### Anti-hardcoding Mutation
+공개 NHTSA 문서에서는 다음과 같은 검증 범위 누락이 확인됩니다.
 
 ```text
-4 automated tests
+설계 요구조건
+주차 브레이크 작동 ≤ 3초
+
+기존 검사
+작동 지연 시간을 직접 검사하지 않음
 ```
 
-- Feasible Domain 변경 → Solver 결과 변화
-- Requirement 변경 → Solver 결과 변화
-- Ford와 무관한 변수 / 단위에서도 동일 Core 동작
-- Case name / source identity 변경이 수학적 결과에 영향을 주지 않음
+이후 관련 조사와 리콜이 진행됐으며,  
+Haldex는 주차 브레이크 작동 시간을 직접 확인하는 **100% 출하 전 검사**를 추가했습니다.
 
-### Controlled Fault Injection
-
-```text
-8 / 8 cases PASS
-14 assertions
-```
-
-검증 항목에는 다음이 포함됩니다.
-
-```text
-Unsupported semantics
-Invalid Core input
-Missing Feasible Evidence
-Human Review incomplete
-Solver UNKNOWN / timeout
-Conflicting correction history
-```
-
-### Unseen Real Document
-
-**Kyogle ATSB 59-page real-world report**
-
-```text
-✓ PDF ingestion
-✓ Evidence candidate discovery
-✓ Source provenance
-✓ Grounding pipeline
-
-✕ Compatible independent R / V / F not established
-✕ Solver intentionally NOT RUN
-```
-
-새 문서에서 숫자가 발견되었다는 이유만으로  
-억지로 Formal Model을 생성하지 않는 것을 확인했습니다.
-
-### Semantic / Input Boundary
-
-```text
-Barnawartha
-→ Conditional semantics
-→ Formalization BLOCKED
-
-Ely
-→ Relational semantics
-→ Formalization BLOCKED
-
-Encrypted PDF
-→ Unsupported input
-→ Fail-safe BLOCK
-```
+이 사례는 중요한 설계 요구조건이 기존 검사 항목에서 빠질 수 있다는  
+**검증 범위 누락 문제**를 보여줍니다.
 
 ---
 
-## 지원 범위
+## ✅ 신뢰성 검증
 
-현재 prototype은 특히 다음과 같은  
-**source-backed numeric engineering constraints**를 중심으로 지원합니다.
+특정 사례나 숫자에 맞춘 프로그램이 아닌지 별도로 검증했습니다.
+
+- ✅ Anti-hardcoding Mutation Test 4건
+- ✅ Controlled Fault Injection 8/8 통과
+- ✅ 총 14개 assertion 검증
+- ✅ Kyogle ATSB 59페이지 실제 문서 테스트
+- ✅ 조건부·관계형 의미의 지원 범위 초과 시 자동 차단
+- ✅ 암호화 PDF 등 지원하지 않는 입력에 대한 Fail-safe 동작
+
+핵심 원칙은 단순합니다.
+
+> **근거가 부족하면 결과를 만들지 않습니다.**
+
+숫자를 발견했다는 이유만으로 임의의 수학 모델을 만들거나  
+지원하지 않는 의미를 억지로 Solver에 전달하지 않습니다.
+
+---
+
+## 💡 기대효과
+
+기존에는 설계 문서, 검사 기준, 시험 결과가 서로 다른 자료에 흩어져 있어  
+엔지니어가 직접 비교하고 누락 여부를 확인해야 합니다.
+
+본 시스템은 이를 하나의 검증 흐름으로 연결합니다.
 
 ```text
-Range
+문서 근거 탐색
+→ 동일 공학 변수 연결
+→ 설계 요구조건과 검사 기준 비교
+→ 실제 관측 근거 확인
+→ 검증 사각지대 탐지
+```
+
+### 기대되는 효과
+
+- 검증 기준 누락 조기 발견
+- 설계 요구조건과 검사 기준의 불일치 탐지
+- 원문 근거 기반의 검토 과정 제공
+- 반복적인 문서 비교 작업 감소
+- AI의 판단에만 의존하지 않는 결정론적 검증
+- 검증 과정과 판단 근거의 추적 가능성 향상
+
+---
+
+## ⚠️ 현재 지원 범위
+
+현재 프로토타입은 특히 다음과 같은 **수치화 가능한 공학 조건**을 중심으로 지원합니다.
+
+```text
+범위 조건
 min ≤ X ≤ max
 
-Lower Bound
+하한 조건
 X ≥ min
 
-Upper Bound
+상한 조건
 X ≤ max
 ```
 
-EVST는 특정 Ford 문서나 특정 숫자에 맞춘 시스템은 아니지만,  
-모든 Engineering 문장을 자동으로 Solver 식으로 변환하는 범용 자연어 Solver도 아닙니다.
+모든 공학 문장을 자동으로 수식화하는 범용 시스템은 아닙니다.
 
-지원되지 않거나 의미가 불명확한 경우에는  
-임의로 해석하지 않고 **Review / Block** 상태를 유지합니다.
+근거가 부족하거나 의미가 불명확하거나  
+현재 지원하지 않는 조건이면 임의로 해석하지 않고 검증을 중단합니다.
 
----
-
-## Fail-safe Principle
-
-EVST의 목표는
-
-> **답을 많이 만드는 것보다, 근거 없는 답을 만들지 않는 것**
-
-입니다.
-
-다음과 같은 경우 Solver 실행 이전에 차단할 수 있습니다.
-
-```text
-Missing Evidence
-Ambiguous Role
-Unit Mismatch
-Different Engineering Variable
-Unsupported Semantics
-Incomplete Human Review
-Solver UNKNOWN / Timeout
-```
-
-또한,
-
-```text
-NO_ESCAPE_FOUND
-```
-
-는
-
-> 현재 승인된 Formal Model과 Evidence 범위 안에서  
-> Verification Escape를 발견하지 못했다
-
-는 의미이며, 실제 물리 시스템의 절대적인 안전을 의미하지 않습니다.
+또한 `NO_ESCAPE_FOUND`는  
+현재 승인된 문서 근거와 수학 모델 범위에서 검증 사각지대를 발견하지 못했다는 의미이며,  
+실제 시스템의 절대적인 안전을 의미하지 않습니다.
 
 ---
 
-## 실행
+## 🚀 실행 방법
 
-### 1. Dependency 설치
+### 1. 의존성 설치
 
 ```bash
 python -m pip install -r requirements.txt
@@ -362,28 +245,21 @@ PYTHONPATH="$(pwd)" python -m streamlit run src/ui/app.py
 
 ---
 
-## Project Structure
+## 📂 프로젝트 구조
 
 ```text
 src/
-├── ai/
-│   └── AI extraction / grounding
-│
-├── application/
-│   └── PDF / provenance / review orchestration
-│
-├── core/
-│   └── Validator / Constraint Engine / Z3
-│
-└── ui/
-    └── Streamlit application
+├── ai/            문서 근거 탐색 및 구조화
+├── application/   PDF · 근거 연결 · 검토 흐름
+├── core/          Validator · Constraint Engine · Z3
+└── ui/            Streamlit UI
 
-tests/
-validation/
+tests/             자동 테스트
+validation/        실제 사례 및 검증 기록
 ```
 
 ---
 
 ## 한 문장으로 정리하면
 
-> **EVST는 기존 Engineering Document에서 설계 요구조건, 실제 검증 기준, 관측 근거를 구조화하고, 검사에는 합격하지만 실제 요구조건은 위반하는 상태가 존재하는지를 source-backed Formal Model과 deterministic Solver로 검증하는 Engineering Assurance System입니다.**
+> **공학 문서에서 설계 요구조건·검사 기준·실제 관측 근거를 연결하고, 검사에는 합격하지만 설계 기준을 위반하는 상태가 존재하는지 검증하는 시스템입니다.**
